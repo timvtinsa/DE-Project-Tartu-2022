@@ -1,0 +1,462 @@
+{
+    "search_metadata": {
+        "id": "63a4868ba4bb3833040b2683",
+        "status": "Success",
+        "json_endpoint": "https://serpapi.com/searches/3b9514c0733218cb/63a4868ba4bb3833040b2683.json",
+        "created_at": "2022-12-22 16:32:11 UTC",
+        "processed_at": "2022-12-22 16:32:11 UTC",
+        "google_scholar_author_url": "https://scholar.google.com/citations?user=boYjNZQAAAAJ&hl=en",
+        "raw_html_file": "https://serpapi.com/searches/3b9514c0733218cb/63a4868ba4bb3833040b2683.html",
+        "total_time_taken": 1.94
+    },
+    "search_parameters": {
+        "engine": "google_scholar_author",
+        "author_id": "boYjNZQAAAAJ",
+        "hl": "en"
+    },
+    "author": {
+        "name": "Csaba Balazs",
+        "affiliations": "Professor of Physics",
+        "email": "Verified email at monash.edu",
+        "interests": [
+            {
+                "title": "Theoretical Particle Physics",
+                "link": "https://scholar.google.com/citations?view_op=search_authors&hl=en&mauthors=label:theoretical_particle_physics",
+                "serpapi_link": "https://serpapi.com/search.json?engine=google_scholar_profiles&hl=en&mauthors=label%3Atheoretical_particle_physics"
+            },
+            {
+                "title": "High Energy Physics Phenomenology",
+                "link": "https://scholar.google.com/citations?view_op=search_authors&hl=en&mauthors=label:high_energy_physics_phenomenology",
+                "serpapi_link": "https://serpapi.com/search.json?engine=google_scholar_profiles&hl=en&mauthors=label%3Ahigh_energy_physics_phenomenology"
+            },
+            {
+                "title": "Particle Astrophysics",
+                "link": "https://scholar.google.com/citations?view_op=search_authors&hl=en&mauthors=label:particle_astrophysics",
+                "serpapi_link": "https://serpapi.com/search.json?engine=google_scholar_profiles&hl=en&mauthors=label%3Aparticle_astrophysics"
+            },
+            {
+                "title": "Particle Cosmology",
+                "link": "https://scholar.google.com/citations?view_op=search_authors&hl=en&mauthors=label:particle_cosmology",
+                "serpapi_link": "https://serpapi.com/search.json?engine=google_scholar_profiles&hl=en&mauthors=label%3Aparticle_cosmology"
+            }
+        ],
+        "thumbnail": "https://scholar.googleusercontent.com/citations?view_op=view_photo&user=boYjNZQAAAAJ&citpid=1"
+    },
+    "articles": [
+        {
+            "title": "SUSY Les Houches accord: Interfacing SUSY spectrum calculators, decay packages, and event generators",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:u5HHmVD_uO8C",
+            "citation_id": "boYjNZQAAAAJ:u5HHmVD_uO8C",
+            "authors": "P Skands, BC Allanach, H Baer, C Balázs, G Bélanger, F Boudjema, ...",
+            "publication": "Journal of High Energy Physics 2004 (07), 036, 2004",
+            "cited_by": {
+                "value": 1012,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=14913726498989771935",
+                "serpapi_link": "https://serpapi.com/search.json?cites=14913726498989771935&engine=google_scholar&hl=en",
+                "cites_id": "14913726498989771935"
+            },
+            "year": "2004"
+        },
+        {
+            "title": "Soft gluon effects on lepton pairs at hadron colliders",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:uc_IGeMz5qoC",
+            "citation_id": "boYjNZQAAAAJ:uc_IGeMz5qoC",
+            "authors": "C Balazs, CP Yuan",
+            "publication": "Physical Review D 56 (9), 5558, 1997",
+            "cited_by": {
+                "value": 848,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=11735560666352527201",
+                "serpapi_link": "https://serpapi.com/search.json?cites=11735560666352527201&engine=google_scholar&hl=en",
+                "cites_id": "11735560666352527201"
+            },
+            "year": "1997"
+        },
+        {
+            "title": "SUSY les houches accord 2",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:9yKSN-GCB0IC",
+            "citation_id": "boYjNZQAAAAJ:9yKSN-GCB0IC",
+            "authors": "BC Allanach, C Balázs, G Bélanger, M Bernhardt, F Boudjema, ...",
+            "publication": "Computer Physics Communications 180 (1), 8-25, 2009",
+            "cited_by": {
+                "value": 618,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=14601975649565014725",
+                "serpapi_link": "https://serpapi.com/search.json?cites=14601975649565014725&engine=google_scholar&hl=en",
+                "cites_id": "14601975649565014725"
+            },
+            "year": "2009"
+        },
+        {
+            "title": "Science with the cherenkov telescope array",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:b1wdh0AR-JQC",
+            "citation_id": "boYjNZQAAAAJ:b1wdh0AR-JQC",
+            "authors": "BS Acharya, I Agudo, I Al Samarai, R Alfaro, J Alfaro, C Alispach, ...",
+            "cited_by": {
+                "value": 426,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=14538190725711053489,13394008197405430585",
+                "serpapi_link": "https://serpapi.com/search.json?cites=14538190725711053489%2C13394008197405430585&engine=google_scholar&hl=en",
+                "cites_id": "14538190725711053489,13394008197405430585"
+            },
+            "year": "2017"
+        },
+        {
+            "title": "Supersymmetry parameter analysis: SPA convention and project",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:d1gkVwhDpl0C",
+            "citation_id": "boYjNZQAAAAJ:d1gkVwhDpl0C",
+            "authors": "JA Aguilar-Saavedra, A Ali, BC Allanach, R Arnowitt, HA Baer, JA Bagger, ...",
+            "publication": "The European Physical Journal C-Particles and Fields 46 (1), 43-60, 2006",
+            "cited_by": {
+                "value": 408,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=87448062103593145",
+                "serpapi_link": "https://serpapi.com/search.json?cites=87448062103593145&engine=google_scholar&hl=en",
+                "cites_id": "87448062103593145"
+            },
+            "year": "2006"
+        },
+        {
+            "title": "Les Houches 2011: physics at TeV colliders new physics working group report",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:KlAtU1dfN6UC",
+            "citation_id": "boYjNZQAAAAJ:KlAtU1dfN6UC",
+            "authors": "G Brooijmans, B Gripaios, F Moortgat, J Santiago, P Skands, DA Vásquez, ...",
+            "publication": "arXiv preprint arXiv:1203.1488, 2012",
+            "cited_by": {
+                "value": 298,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=14472471802528873387",
+                "serpapi_link": "https://serpapi.com/search.json?cites=14472471802528873387&engine=google_scholar&hl=en",
+                "cites_id": "14472471802528873387"
+            },
+            "year": "2012"
+        },
+        {
+            "title": "Updated reach of CERN LHC and constraints from relic density, b→ sγ and aμ in the mSUGRA model",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:2osOgNQ5qMEC",
+            "citation_id": "boYjNZQAAAAJ:2osOgNQ5qMEC",
+            "authors": "H Baer, C Balazs, A Belyaev, T Krupovnickas, X Tata",
+            "publication": "Journal of High Energy Physics 2003 (06), 054, 2003",
+            "cited_by": {
+                "value": 277,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=2269243479832244407",
+                "serpapi_link": "https://serpapi.com/search.json?cites=2269243479832244407&engine=google_scholar&hl=en",
+                "cites_id": "2269243479832244407"
+            },
+            "year": "2003"
+        },
+        {
+            "title": "Higgs physics at the CLIC electron–positron linear collider",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:PELIpwtuRlgC",
+            "citation_id": "boYjNZQAAAAJ:PELIpwtuRlgC",
+            "authors": "H Abramowicz, A Abusleme, K Afanaciev, N Alipour Tehrani, C Balázs, ...",
+            "publication": "The European Physical Journal C 77 (7), 1-41, 2017",
+            "cited_by": {
+                "value": 262,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=8939526166301315866",
+                "serpapi_link": "https://serpapi.com/search.json?cites=8939526166301315866&engine=google_scholar&hl=en",
+                "cites_id": "8939526166301315866"
+            },
+            "year": "2017"
+        },
+        {
+            "title": "Dark matter, light top squarks, and electroweak baryogenesis",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:roLk4NBRz8UC",
+            "citation_id": "boYjNZQAAAAJ:roLk4NBRz8UC",
+            "authors": "C Balazs, M Carena, CEM Wagner",
+            "publication": "Physical Review D 70 (1), 015007, 2004",
+            "cited_by": {
+                "value": 255,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=3815802957865639704,4121111887620975252",
+                "serpapi_link": "https://serpapi.com/search.json?cites=3815802957865639704%2C4121111887620975252&engine=google_scholar&hl=en",
+                "cites_id": "3815802957865639704,4121111887620975252"
+            },
+            "year": "2004"
+        },
+        {
+            "title": "k T effects in direct-photon production",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:qjMakFHDy7sC",
+            "citation_id": "boYjNZQAAAAJ:qjMakFHDy7sC",
+            "authors": "L Apanasevich, C Balazs, C Bromberg, J Huston, A Maul, WK Tung, ...",
+            "publication": "Physical Review D 59 (7), 074007, 1999",
+            "cited_by": {
+                "value": 255,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=2654725121052759973",
+                "serpapi_link": "https://serpapi.com/search.json?cites=2654725121052759973&engine=google_scholar&hl=en",
+                "cites_id": "2654725121052759973"
+            },
+            "year": "1999"
+        },
+        {
+            "title": "Neutralino relic density in minimal supergravity with co-annihilations",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:IjCSPb-OGe4C",
+            "citation_id": "boYjNZQAAAAJ:IjCSPb-OGe4C",
+            "authors": "H Baer, C Balazs, A Belyaev",
+            "publication": "Journal of High Energy Physics 2002 (03), 042, 2002",
+            "cited_by": {
+                "value": 247,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=16641958608100038350",
+                "serpapi_link": "https://serpapi.com/search.json?cites=16641958608100038350&engine=google_scholar&hl=en",
+                "cites_id": "16641958608100038350"
+            },
+            "year": "2002"
+        },
+        {
+            "title": "χ2 analysis of the minimal supergravity model including WMAP,(g− 2) μ and b→ sγ constraints",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:UeHWp8X0CEIC",
+            "citation_id": "boYjNZQAAAAJ:UeHWp8X0CEIC",
+            "authors": "H Baer, C Balazs",
+            "publication": "Journal of Cosmology and Astroparticle Physics 2003 (05), 006, 2003",
+            "cited_by": {
+                "value": 246,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=6498050383257447680",
+                "serpapi_link": "https://serpapi.com/search.json?cites=6498050383257447680&engine=google_scholar&hl=en",
+                "cites_id": "6498050383257447680"
+            },
+            "year": "2003"
+        },
+        {
+            "title": "Impact of the muon anomalous magnetic moment on supersymmetric models",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:zYLM7Y9cAGgC",
+            "citation_id": "boYjNZQAAAAJ:zYLM7Y9cAGgC",
+            "authors": "H Baer, C Balazs, J Ferrandis, X Tata",
+            "publication": "Physical Review D 64 (3), 035004, 2001",
+            "cited_by": {
+                "value": 219,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=3930653399115710127",
+                "serpapi_link": "https://serpapi.com/search.json?cites=3930653399115710127&engine=google_scholar&hl=en",
+                "cites_id": "3930653399115710127"
+            },
+            "year": "2001"
+        },
+        {
+            "title": "Status of the scalar singlet dark matter model",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:nrtMV_XWKgEC",
+            "citation_id": "boYjNZQAAAAJ:nrtMV_XWKgEC",
+            "authors": "P Athron, C Balázs, T Bringmann, A Buckley, M Chrząszcz, J Conrad, ...",
+            "publication": "The European Physical Journal C 77 (8), 1-17, 2017",
+            "cited_by": {
+                "value": 212,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=17807870339054722722",
+                "serpapi_link": "https://serpapi.com/search.json?cites=17807870339054722722&engine=google_scholar&hl=en",
+                "cites_id": "17807870339054722722"
+            },
+            "year": "2017"
+        },
+        {
+            "title": "Updated constraints on the minimal supergravity model",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:Y0pCki6q_DkC",
+            "citation_id": "boYjNZQAAAAJ:Y0pCki6q_DkC",
+            "authors": "H Baer, C Balazs, A Belyaev, JK Mizukoshi, X Tata, Y Wang",
+            "publication": "Journal of High Energy Physics 2002 (07), 050, 2002",
+            "cited_by": {
+                "value": 204,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=14156774478813693564",
+                "serpapi_link": "https://serpapi.com/search.json?cites=14156774478813693564&engine=google_scholar&hl=en",
+                "cites_id": "14156774478813693564"
+            },
+            "year": "2002"
+        },
+        {
+            "title": "QCD corrections to scalar production via heavy quark fusion at hadron colliders",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:WF5omc3nYNoC",
+            "citation_id": "boYjNZQAAAAJ:WF5omc3nYNoC",
+            "authors": "C Balazs, HJ He, CP Yuan",
+            "publication": "Physical Review D 60 (11), 114001, 1999",
+            "cited_by": {
+                "value": 202,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=7112577453758997069",
+                "serpapi_link": "https://serpapi.com/search.json?cites=7112577453758997069&engine=google_scholar&hl=en",
+                "cites_id": "7112577453758997069"
+            },
+            "year": "1999"
+        },
+        {
+            "title": "Global fits of GUT-scale SUSY models with GAMBIT",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:yB1At4FlUx8C",
+            "citation_id": "boYjNZQAAAAJ:yB1At4FlUx8C",
+            "authors": "P Athron, C Balázs, T Bringmann, A Buckley, M Chrząszcz, J Conrad, ...",
+            "publication": "The European Physical Journal C 77 (12), 1-44, 2017",
+            "cited_by": {
+                "value": 180,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=13168449309345743399,13589177728638904855,15661960000610971777",
+                "serpapi_link": "https://serpapi.com/search.json?cites=13168449309345743399%2C13589177728638904855%2C15661960000610971777&engine=google_scholar&hl=en",
+                "cites_id": "13168449309345743399,13589177728638904855,15661960000610971777"
+            },
+            "year": "2017"
+        },
+        {
+            "title": "New physics explanations of aμ in light of the FNAL muon g− 2 measurement",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:sJsF-0ZLhtgC",
+            "citation_id": "boYjNZQAAAAJ:sJsF-0ZLhtgC",
+            "authors": "P Athron, C Balázs, DHJ Jacob, W Kotlarski, D Stöckinger, ...",
+            "publication": "Journal of High Energy Physics 2021 (9), 1-115, 2021",
+            "cited_by": {
+                "value": 171,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=13830524360979580649",
+                "serpapi_link": "https://serpapi.com/search.json?cites=13830524360979580649&engine=google_scholar&hl=en",
+                "cites_id": "13830524360979580649"
+            },
+            "year": "2021"
+        },
+        {
+            "title": "Updated baseline for a staged Compact Linear Collider",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:BJbdYPG6LGMC",
+            "citation_id": "boYjNZQAAAAJ:BJbdYPG6LGMC",
+            "authors": "T CLIC, MJ Boland, U Felzmann, PJ Giansiracusa, TG Lucas, RP Rassool, ...",
+            "publication": "arXiv preprint arXiv:1608.07537, 2016",
+            "cited_by": {
+                "value": 169,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=17747669171234520037",
+                "serpapi_link": "https://serpapi.com/search.json?cites=17747669171234520037&engine=google_scholar&hl=en",
+                "cites_id": "17747669171234520037"
+            },
+            "year": "2016"
+        },
+        {
+            "title": "Yukawa coupling unification in supersymmetric models",
+            "link": "https://scholar.google.com/citations?view_op=view_citation&hl=en&user=boYjNZQAAAAJ&citation_for_view=boYjNZQAAAAJ:W7OEmFMy1HYC",
+            "citation_id": "boYjNZQAAAAJ:W7OEmFMy1HYC",
+            "authors": "D Auto, H Baer, C Balazs, A Belyaev, J Ferrandis, X Tata",
+            "publication": "Journal of High Energy Physics 2003 (06), 023, 2003",
+            "cited_by": {
+                "value": 168,
+                "link": "https://scholar.google.com/scholar?oi=bibs&hl=en&cites=1410209017021572956",
+                "serpapi_link": "https://serpapi.com/search.json?cites=1410209017021572956&engine=google_scholar&hl=en",
+                "cites_id": "1410209017021572956"
+            },
+            "year": "2003"
+        }
+    ],
+    "cited_by": {
+        "table": [
+            {
+                "citations": {
+                    "all": 11826,
+                    "since_2017": 4664
+                }
+            },
+            {
+                "h_index": {
+                    "all": 55,
+                    "since_2017": 34
+                }
+            },
+            {
+                "i10_index": {
+                    "all": 106,
+                    "since_2017": 69
+                }
+            }
+        ],
+        "graph": [
+            {
+                "year": 1997,
+                "citations": 33
+            },
+            {
+                "year": 1998,
+                "citations": 48
+            },
+            {
+                "year": 1999,
+                "citations": 108
+            },
+            {
+                "year": 2000,
+                "citations": 196
+            },
+            {
+                "year": 2001,
+                "citations": 211
+            },
+            {
+                "year": 2002,
+                "citations": 241
+            },
+            {
+                "year": 2003,
+                "citations": 336
+            },
+            {
+                "year": 2004,
+                "citations": 412
+            },
+            {
+                "year": 2005,
+                "citations": 366
+            },
+            {
+                "year": 2006,
+                "citations": 409
+            },
+            {
+                "year": 2007,
+                "citations": 403
+            },
+            {
+                "year": 2008,
+                "citations": 504
+            },
+            {
+                "year": 2009,
+                "citations": 401
+            },
+            {
+                "year": 2010,
+                "citations": 503
+            },
+            {
+                "year": 2011,
+                "citations": 526
+            },
+            {
+                "year": 2012,
+                "citations": 607
+            },
+            {
+                "year": 2013,
+                "citations": 426
+            },
+            {
+                "year": 2014,
+                "citations": 386
+            },
+            {
+                "year": 2015,
+                "citations": 462
+            },
+            {
+                "year": 2016,
+                "citations": 468
+            },
+            {
+                "year": 2017,
+                "citations": 631
+            },
+            {
+                "year": 2018,
+                "citations": 714
+            },
+            {
+                "year": 2019,
+                "citations": 726
+            },
+            {
+                "year": 2020,
+                "citations": 689
+            },
+            {
+                "year": 2021,
+                "citations": 919
+            },
+            {
+                "year": 2022,
+                "citations": 978
+            }
+        ]
+    },
+    "public_access": {
+        "link": "https://scholar.google.com/citations?view_op=list_mandates&hl=en&user=boYjNZQAAAAJ",
+        "available": 55,
+        "not_available": 0
+    },
+    "serpapi_pagination": {
+        "next": "https://serpapi.com/search.json?author_id=boYjNZQAAAAJ&engine=google_scholar_author&hl=en&start=20"
+    }
+}

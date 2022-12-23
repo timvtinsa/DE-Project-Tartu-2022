@@ -1,0 +1,28 @@
+[
+    {
+        "alpha_two_code": "AU",
+        "name": "Monash University",
+        "web_pages": [
+            "http://www.monash.edu/"
+        ],
+        "state-province": null,
+        "domains": [
+            "monash.edu",
+            "monash.edu.au"
+        ],
+        "country": "Australia"
+    },
+    {
+        "alpha_two_code": "AU",
+        "name": "Monash University",
+        "web_pages": [
+            "http://www.monash.edu/"
+        ],
+        "state-province": null,
+        "domains": [
+            "monash.edu",
+            "monash.edu.au"
+        ],
+        "country": "Australia"
+    }
+]
