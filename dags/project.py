@@ -1,10 +1,17 @@
-from datetime import timedelta
-import airflow
-import json
-import pandas as pd
-import numpy as np
 import re
+import os
+import json
+import time
+import random
+import pickle
+import airflow
+import numpy as np
+import pandas as pd
+import gender_guesser.detector as gender
 
+from semanticscholar import SemanticScholar
+from datetime import timedelta
+from urllib.request import urlopen
 
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator, BranchPythonOperator
@@ -28,18 +35,25 @@ DUMMY_CONSTANTS = {
     'h_index': 1
 }
 
-def prepare_year(data_folder):
-    insert_statement = 'INSERT INTO year_of_publication (year)\n VALUES \n'
-    year = 2023
-    for i in range(200):
-        year = year - 1
-        if i < 199:
-            insert_statement += f'({year}),\n'
-        else:
-            insert_statement += f'({year}) \nON CONFLICT DO NOTHING; \n'
-    with open(f'{data_folder}/insert_year.sql', 'w') as f:
-        f.write(insert_statement)
+GENDER_MAPPING = {
+    'male': "M",
+    'female': "F",
+}
 
+MOCK_API = False
+MOCK_FOLDER = "API_mock_data"
+serpapi_key = "76a33e61246c7dc521e7c31b6abb087ef2f0a206e51476258b07c36ea5f900dd"
+
+genderDetector = gender.Detector()
+
+def get_JSON(URL):
+    response = urlopen(URL)
+    decoded = response.read().decode("utf-8")
+    return json.loads(decoded)
+
+def normalize_title(title):
+    return " ".join(title.strip().title().split()).replace(".", "")
+    
 def normalize_name(name):
     name = name.replace(".", ". ")
     name = name.replace("-", " -")
@@ -57,6 +71,50 @@ def normalize_name(name):
     last_name = parts[len(parts)-1]
     return [first_name, last_name, name]
 
+def clear_title(title):
+    if title is not None:
+        title = title.replace("\n", "")
+        title = title.replace("'", "")
+    return title if title else 'NULL'
+
+def parse_first_name(normalized_name):
+    return " ".join(normalized_name.split()[:-1])
+
+def parse_last_name(normalized_name):
+    return normalized_name.split()[-1]
+
+def is_full_name(normalized_name):
+    return (len(normalized_name) > 1) and not re.search(r"\.", normalized_name)
+
+def query_gender_API(first_name):
+    local_mock = True
+    if local_mock:
+        return {
+            "name": first_name, 
+            "gender": random.choice(["male", "female"]), 
+            "samples":  random.randint(10, 10000), 
+            "accuracy": random.randint(1, 100), 
+            "duration": str(random.randint(10, 50)) + "ms"
+        }
+    else:
+        key = "WX923RkrwWYQE4UGSt4GHEFk7EZYgwUJ5adt"
+        url = "https://gender-api.com/get?key=" + key + "&name=" + first_name
+        return get_JSON(url)
+
+sch = SemanticScholar()
+
+def prepare_year(data_folder):
+    insert_statement = 'INSERT INTO year_of_publication (year)\n VALUES \n'
+    year = 2023
+    for i in range(200):
+        year = year - 1
+        if i < 199:
+            insert_statement += f'({year}),\n'
+        else:
+            insert_statement += f'({year}) \nON CONFLICT DO NOTHING; \n'
+    with open(f'{data_folder}/insert_year.sql', 'w') as f:
+        f.write(insert_statement)
+
 def read_data(data_folder):
     with open(f'{data_folder}/dataframe.json', 'r') as f:
         lines = f.readlines()
@@ -67,45 +125,71 @@ def read_data(data_folder):
     ##papers = papers.drop('abstract', axis=1)
     return papers
 
-def prepare_author(data_folder):
+def prepare_data(data_folder):
     papers = read_data(data_folder)
     authors = {}
-    insert_statement = 'INSERT INTO authors (id, first_name, last_name, gender, citations_count, h_index)\n VALUES \n'
-    size = len(papers.index)
-    for index, row in papers.iterrows():
+    insert_authors = 'INSERT INTO authors (id, first_name, last_name, gender)\n VALUES \n'
+    insert_papers = 'INSERT INTO papers (id, title, scientific_domain_id, doi, comments, report_no, license)\n VALUES \n'
+    insert_authors_to_papers = 'INSERT INTO author_to_paper (author_id, paper_id)\n VALUES \n'
+    insert_scientific_domain = 'INSERT INTO scientific_domain (id, code)\n VALUES \n'
+    index = 1
+    for i, row in papers.iterrows():
         for author in row["authors_parsed"]:
             first_name = author[1].replace(",", "")
             last_name = author[0].replace(",", "")
 
-        if first_name.strip() != "":
-            names = normalize_name(first_name + " " + last_name)
-            first_name = names[0]
-            last_name = names[1]
-            name = names[2]
-            gender = DUMMY_CONSTANTS['gender']
-            citations_count = DUMMY_CONSTANTS['citations_count']
-            h_index = DUMMY_CONSTANTS['h_index']
-            ##name, gender = full_name_and_gender(name)
-            
-            if not (name in authors):
-                authors[name] = {
-                    "google_scholar_id": None,
-                    "gender": gender,
-                    "university": None,
-                    "role": None
-                }
-                insert_statement += f'{index, first_name, last_name, gender, citations_count, h_index}'
-                if index + 1 == size:
-                    insert_statement += '\n ON CONFLICT DO NOTHING;\n'
-                else:
-                    insert_statement += ',\n'
-    with open(f'{data_folder}/insert.sql', 'w') as f:
-        f.write(insert_statement)
+            if first_name.strip() != "":
+                names = normalize_name(first_name + " " + last_name)
+                first_name = names[0]
+                last_name = names[1]
+                name = names[2]
+                genderResult = genderDetector.get_gender(first_name)
+                gender = 'X'
+                if genderResult == 'female' or genderResult == 'male':
+                    gender = GENDER_MAPPING[genderResult]
+                ##name, gender = full_name_and_gender(name)
+                
+                if not (name in authors):
+                    authors[name] = {
+                        "google_scholar_id": None,
+                        "gender": gender,
+                        "university": None,
+                        "role": None
+                    }
+                    insert_authors += f'{index, first_name, last_name, gender},\n'
+                    insert_authors_to_papers += f'{index, i},\n'
+                    index += 1
 
-def prepare_data(data_folder):
-    prepare_author(data_folder)
+        title = clear_title(row.title)
+        doi = row.doi if row.doi else 'NULL'
+        comments = clear_title(row.comments)
+        report_no = row["report-no"] if row["report-no"] else 'NULL'
+        license = row.license if row.license else "NULL"
+        insert_papers += f'{i, title, i, doi, comments, report_no, license},\n'
+        scientific_domain = row.categories
+        insert_scientific_domain += f'{i, scientific_domain,},\n'
+    
+    insert_authors = insert_authors[:-2]
+    insert_authors += '\n ON CONFLICT DO NOTHING;\n'
+    with open(f'{data_folder}/insert_authors.sql', 'w') as f:
+        f.write(insert_authors)
+
+    insert_papers = insert_papers[:-2]
+    insert_papers += '\n ON CONFLICT DO NOTHING;\n'
+    with open(f'{data_folder}/insert_papers.sql', 'w') as f:
+        f.write(insert_papers)
+    
+    insert_authors_to_papers = insert_authors_to_papers[:-2]
+    insert_authors_to_papers += '\n ON CONFLICT DO NOTHING;\n'
+    with open(f'{data_folder}/insert_authors_to_papers.sql', 'w') as f:
+        f.write(insert_authors_to_papers)
+
+    insert_scientific_domain = insert_scientific_domain[:-2]
+    insert_scientific_domain += '\n ON CONFLICT DO NOTHING;\n'
+    with open(f'{data_folder}/insert_scientific_domain.sql', 'w') as f:
+        f.write(insert_scientific_domain)
+
     prepare_year(data_folder)
-
 
 project = DAG(
     dag_id='project',  # name of dag
@@ -127,7 +211,7 @@ first_task = PostgresOperator(
 )
 
 second_task = PythonOperator(
-    task_id='prepare_author_insert',
+    task_id='prepare_data',
     dag=project,
     trigger_rule='none_failed',
     python_callable=prepare_data,
@@ -140,18 +224,36 @@ third_task = PostgresOperator(
     task_id='insert_authors',
     dag=project,
     postgres_conn_id='airflow_pg',
-    sql='insert.sql',
+    sql='insert_authors.sql',
     trigger_rule='none_failed',
     autocommit=True,
 )
 
 fourth_task = PostgresOperator(
-    task_id='insert_years',
+    task_id='insert_scientific_domain',
     dag=project,
     postgres_conn_id='airflow_pg',
-    sql='insert_year.sql',
+    sql='insert_scientific_domain.sql',
     trigger_rule='none_failed',
     autocommit=True,
 )
 
-first_task >> second_task >> third_task >> fourth_task
+fifth_task = PostgresOperator(
+    task_id='insert_papers',
+    dag=project,
+    postgres_conn_id='airflow_pg',
+    sql='insert_papers.sql',
+    trigger_rule='none_failed',
+    autocommit=True,
+)
+
+sixth_task = PostgresOperator(
+    task_id='insert_authors_to_papers',
+    dag=project,
+    postgres_conn_id='airflow_pg',
+    sql='insert_authors_to_papers.sql',
+    trigger_rule='none_failed',
+    autocommit=True,
+)
+
+first_task >> second_task >> third_task >> fourth_task >> fifth_task >> sixth_task
