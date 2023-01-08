@@ -1,4 +1,4 @@
-INSERT INTO year_of_publication (year)
+INSERT IGNORE INTO year_of_publication (year)
  VALUES 
 (2022),
 (2021),
@@ -199,5 +199,4 @@ INSERT INTO year_of_publication (year)
 (1826),
 (1825),
 (1824),
-(1823) 
-ON CONFLICT DO NOTHING; 
+(1823); 

@@ -1,0 +1,8 @@
+MATCH (a:Author), (p:Paper) WHERE a.id = 1 AND p.id = 1 CREATE (a)-[:AUTHOR]->(p)
+MATCH (a:Author), (p:Paper) WHERE a.id = 3 AND p.id = 1 CREATE (a)-[:AUTHOR]->(p)
+MATCH (a:Author), (p:Paper) WHERE a.id = 2 AND p.id = 1 CREATE (a)-[:AUTHOR]->(p)
+MATCH (a:Author), (p:Paper) WHERE a.id = 4 AND p.id = 2 CREATE (a)-[:AUTHOR]->(p)
+MATCH (a:Author), (p:Paper) WHERE a.id = 5 AND p.id = 3 CREATE (a)-[:AUTHOR]->(p)
+MATCH (a:Author), (p:Paper) WHERE a.id = 6 AND p.id = 4 CREATE (a)-[:AUTHOR]->(p)
+MATCH (a:Author), (p:Paper) WHERE a.id = 7 AND p.id = 4 CREATE (a)-[:AUTHOR]->(p)
+MATCH (a:Author), (p:Paper) WHERE a.id = 8 AND p.id = 4 CREATE (a)-[:AUTHOR]->(p)

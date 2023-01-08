@@ -1,0 +1,5 @@
+MATCH (p:Paper), (s:ScientificDomain) WHERE p.id = 1 and s.id = 125 CREATE (p)-[:BELONGS_TO]->(s)
+MATCH (p:Paper), (s:ScientificDomain) WHERE p.id = 1 and s.id = 116 CREATE (p)-[:BELONGS_TO]->(s)
+MATCH (p:Paper), (s:ScientificDomain) WHERE p.id = 2 and s.id = 53 CREATE (p)-[:BELONGS_TO]->(s)
+MATCH (p:Paper), (s:ScientificDomain) WHERE p.id = 3 and s.id = 95 CREATE (p)-[:BELONGS_TO]->(s)
+MATCH (p:Paper), (s:ScientificDomain) WHERE p.id = 3 and s.id = 99 CREATE (p)-[:BELONGS_TO]->(s)

@@ -1,0 +1,8 @@
+CREATE (a1:Author {id: 1, first_name: "Maxim A.", last_name : "Yurkin", gender: "M"})
+CREATE (a2:Author {id: 2, first_name: "Alfons", last_name : "Hoekstra", gender: "M"})
+CREATE (a3:Author {id: 3, first_name: "Valeri P.", last_name : "Maltsev", gender: "M"})
+CREATE (a4:Author {id: 4, first_name: "Sergei", last_name : "Ovchinnikov", gender: "M"})
+CREATE (a5:Author {id: 5, first_name: "Ram Gopal", last_name : "Vishwakarma", gender: "M"})
+CREATE (a6:Author {id: 6, first_name: "C. E.", last_name : "Navia", gender: "X"})
+CREATE (a7:Author {id: 7, first_name: "C. R. A.", last_name : "Augusto", gender: "X"})
+CREATE (a8:Author {id: 8, first_name: "K. H.", last_name : "Tsui", gender: "X"})

@@ -58,7 +58,7 @@ x-airflow-common:
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:- semanticscholar gender_guesser}
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:- semanticscholar gender_guesser apache-airflow-providers-neo4j}
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -75,6 +75,7 @@ x-airflow-common:
 services:
   postgres:
     image: postgres:13.8
+    container_name: postgres
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -276,6 +277,42 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+  
+  neo:
+    container_name: neo4j
+    image: neo4j:3.5.31-community
+    ports:
+        - 7474:7474
+        - 7687:7687
+    restart: always
+    environment:
+      - NEO4J_AUTH=none
+    volumes:
+      - ./neo4j/data:/data
+      - ./neo4j/conf:/conf
+  notebook:
+    container_name: notebook
+    build: notebook/
+    ports:
+      - 8888:8888
+    volumes:
+       - ./:/home/jovyan/work/data
+    environment:
+      - GRANT_SUDO=yes
+
+  mysql:
+    container_name: mysql
+    restart: always
+    image: bbglab/mysql:5.6
+    environment:
+      MYSQL_ROOT_USER: 'root'
+      MYSQL_ROOT_PASSWORD: 'admin'
+      MYSQL_DATABASE: 'de_project'
+    ports:
+      - 3305:3306
+    volumes:
+      - de_warehouse:/var/lib/mysql
 
 volumes:
   postgres-db-volume:
+  de_warehouse:
