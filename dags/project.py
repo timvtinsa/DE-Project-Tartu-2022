@@ -234,8 +234,22 @@ def get_author_info(google_scholar_id):
 
     if country == "":
         country = "Unknown"
-        
-    return name, gender, university, country, role
+
+    citationCount = 0
+    hIndex = 0
+    try:
+        citedByData = json["cited_by"]["table"]
+        for obj in citedByData:
+            keys = obj.keys()
+            for k in keys:
+                if k == 'citations':
+                    citationCount = obj[k]["all"]
+                if k == 'h_index':
+                    hIndex = obj[k]["all"]
+    except Exception as e:
+        print(e)
+
+    return name, gender, university, country, role, citationCount, hIndex
 
 def query_serpapi_cite(paper_id):
     url = "https://serpapi.com/search.json?engine=google_scholar_cite&q="
@@ -263,7 +277,7 @@ def get_info_from_serpapi(paper_title):
             for json in authors_json:
                 author_id = json["author_id"]
 
-                name, gender, university, country, role = get_author_info(author_id)
+                name, gender, university, country, role, citationCount, hIndex = get_author_info(author_id)
                 first_name = name[0]
                 last_name = name[1]
                 authors[" ".join(name)] = {
@@ -276,7 +290,9 @@ def get_info_from_serpapi(paper_title):
                     },
                     "first_name": first_name,
                     "last_name": last_name,
-                    "full_name": first_name + " " + last_name
+                    "full_name": first_name + " " + last_name,
+                    "citations_count": citationCount,
+                    "h_index": hIndex
                 }
 
     return title, authors
@@ -383,6 +399,15 @@ def lookup_scientific_domain(data_folder, scientific_domain_code):
         if item['tag'] == scientific_domain_code:
             return item
 
+def remove_null_strings_from_papers():
+    remove_nulls = ''
+    remove_nulls += f"UPDATE papers SET doi = NULL where doi = 'NULL';\n"
+    remove_nulls += f"UPDATE papers SET comments = NULL where comments = 'NULL';\n"
+    remove_nulls += f"UPDATE papers SET report_no = NULL where report_no = 'NULL';\n"
+    remove_nulls += f"UPDATE papers SET license = NULL where license = 'NULL';\n"
+    remove_nulls += f"UPDATE papers SET publication_venue_id = NULL where publication_venue_id = -1;\n"
+    return remove_nulls 
+
 def prepare_data(data_folder):
     papers = read_data(data_folder)
     papers = clean_data(papers)
@@ -391,8 +416,8 @@ def prepare_data(data_folder):
     publication_venues = {}
     # OLAP SQL
     # Postgres
-    insert_authors = 'INSERT INTO authors (id, first_name, last_name, gender, author_affiliation_id)\n VALUES \n'
-    insert_papers = 'INSERT INTO papers (id, year_id, title, doi, comments, report_no, license)\n VALUES \n'
+    insert_authors = 'INSERT INTO authors (id, first_name, last_name, gender, citations_count, h_index, author_affiliation_id)\n VALUES \n'
+    insert_papers = 'INSERT INTO papers (id, publication_venue_id, year_id, title, doi, comments, report_no, license)\n VALUES \n'
     insert_authors_to_papers = 'INSERT INTO author_to_paper (author_id, paper_id)\n VALUES \n'
     insert_scientific_domain_to_paper = 'INSERT INTO scientific_domain_to_paper (scientific_domain_id, paper_id)\n VALUES \n'
     insert_authors_affiliation = 'INSERT INTO authors_affiliation (id, university, country, role)\n VALUES \n(0, \'Unknown\', \'Unknown\', \'Unknown\'),\n'
@@ -417,6 +442,7 @@ def prepare_data(data_folder):
         # For authors who have a profile in Google Scholar
         title_serp, authors_serp = get_info_from_serpapi(row.title)
         for author in authors_serp.values():
+            print("Author:", author)
             name = author['full_name']
             paper_authors.append(name)
             # ------- ENTITY: AUTHOR -------
@@ -424,7 +450,7 @@ def prepare_data(data_folder):
                 author['id'] = index_author
                 authors[name] = author
                 # DATA WAREHOUSE
-                insert_authors += f'({index_author}, \'{author["first_name"]}\', \'{author["last_name"]}\', \'{author["gender"]}\''
+                insert_authors += f'({index_author}, \'{author["first_name"]}\', \'{author["last_name"]}\', \'{author["gender"]}\', {author["citations_count"]}, {author["h_index"]}'
                 index_author += 1
 
             # ------- ENTITY: AFFILIATION -------
@@ -475,11 +501,13 @@ def prepare_data(data_folder):
                         "first_name": first_name,
                         "last_name": last_name,
                         "full_name": name,
-                        "id": index_author
+                        "id": index_author,
+                        "citations_count": 0,
+                        "h_index": 0
                     }
                     paper_authors.append(name)
                     # DATA WAREHOUSE
-                    insert_authors += f'({index_author}, \'{first_name}\', \'{last_name}\', \'{gender}\', 0),\n'
+                    insert_authors += f'({index_author}, \'{first_name}\', \'{last_name}\', \'{gender}\', 0, 0, 0),\n'
                     index_author += 1
 
             # ------- RELATIONSHIP: AUTHOR - PAPER -------
@@ -500,6 +528,7 @@ def prepare_data(data_folder):
         #         if author != coauthor:
 
         # ------- ENTITY: PUBLICATION VENUE -------
+        publication_venue_key = ''
         if row.doi:
             doi = row.doi
             if " " in doi:
@@ -582,8 +611,11 @@ def prepare_data(data_folder):
         report_no = row["report-no"] if row["report-no"] else 'NULL'
         license = row.license if row.license else 'NULL'
         creation_year = datetime.strptime(row["versions"][0]['created'], '%a, %d %b %Y %H:%M:%S %Z').year
+        publication_venue_id = -1
+        if publication_venue_key in publication_venues:
+            publication_venue_id = publication_venues[publication_venue_key]["id"]
         # DATA WAREHOUSE
-        insert_papers += f'({i+1}, {creation_year}, \'{row.title}\', \'{doi}\', \'{comments}\', \'{report_no}\', \'{license}\'),\n'
+        insert_papers += f'({i+1}, {publication_venue_id}, {creation_year}, \'{row.title}\', \'{doi}\', \'{comments}\', \'{report_no}\', \'{license}\'),\n'
         
         # ------- RELATIONSHIP: PAPER - SCIENTIFIC DOMAIN -------
         scientific_domain_codes = row.categories.split(" ")
@@ -605,10 +637,12 @@ def prepare_data(data_folder):
 
     insert_papers = insert_papers[:-2] # Postgres
     insert_papers += '\n ON CONFLICT DO NOTHING;\n' # Postgres
+    
     # insert_papers += ';\n' # MySQL
     with open(f'{data_folder}/dw/insert_papers.sql', 'w') as f:
         f.write(insert_papers)
         f.write(insert_cites)
+        f.write(remove_null_strings_from_papers())
     
     insert_authors_to_papers = insert_authors_to_papers[:-2] # Postgres
     insert_authors_to_papers += '\n ON CONFLICT DO NOTHING;\n' # Postgres
