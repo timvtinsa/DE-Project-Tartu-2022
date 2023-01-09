@@ -2,4 +2,20 @@ INSERT IGNORE INTO publication_venue (id, type, publisher, title, issn)
  VALUES 
 (2, 'article', 'Journal of the Optical Society of America A', 'The Optical Society', '1084-7529'),
 (3, 'article', 'Discrete Mathematics', 'Elsevier BV', '0012-365X'),
-(4, 'article', 'Astrophysics and Space Science', 'Springer Science and Business Media LLC', '0004-640X');
+(4, 'article', 'Astrophysics and Space Science', 'Springer Science and Business Media LLC', '0004-640X'),
+(5, 'article', 'The Astrophysical Journal', 'American Astronomical Society', '0004-637X'),
+(6, 'article', 'Journal of Physics Condensed Matter', 'IOP Publishing', '0953-8984'),
+(7, 'article', 'Modern Physics Letters A', 'World Scientific Pub Co Pte Lt', '0217-7323'),
+(8, 'inproceedings', 'XVIth International Congress on Mathematical Physics', 'WORLD SCIENTIFIC', ''),
+(9, 'article', 'Physical Review D', 'American Physical Society (APS)', '1550-7998'),
+(10, 'article', 'Progress of Theoretical Physics Supplement', 'Oxford University Press (OUP)', '0375-9687'),
+(11, 'article', 'Journal of Optics', 'IOP Publishing', '2040-8978'),
+(12, 'article', 'General Relativity and Gravitation', 'Springer Science and Business Media LLC', '0001-7701'),
+(13, 'article', 'Algebras and Representation Theory', 'Springer Science and Business Media LLC', '1386-923X'),
+(14, 'article', 'Journal of Mathematical Analysis and Applications', 'Elsevier BV', '0022-247X'),
+(15, 'article', 'Computer Physics Communications', 'Elsevier BV', '0010-4655'),
+(16, 'article', 'Physical Review A', 'American Physical Society (APS)', '1050-2947'),
+(17, 'article', 'Icarus', 'Elsevier BV', '0019-1035'),
+(18, 'article', 'Journal of Algebra', 'Elsevier BV', '0021-8693'),
+(19, 'article', 'Physics Letters B', 'Elsevier BV', '0370-2693'),
+(20, 'article', 'Astronomy and Astrophysics', 'EDP Sciences', '0004-6361');

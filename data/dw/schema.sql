@@ -37,8 +37,6 @@ year INT PRIMARY KEY
 
 CREATE TABLE IF NOT EXISTS papers (
 id INT PRIMARY KEY,
-author_id INT NULL,
-author_affiliation_id INT NULL,
 publication_venue_id INT NULL,
 year_id INT NULL,
 title VARCHAR(255) NULL,

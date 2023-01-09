@@ -103,13 +103,24 @@ def is_full_name(normalized_name):
     return (len(normalized_name) > 1) and not re.search(r"\.", normalized_name)
 
 # Semantic Scholar API
-sch = SemanticScholar()
+sch = SemanticScholar(timeout=20)
 
 def sch_find_papers(paper_title):
-    return sch.search_paper(paper_title)
+    while True:
+        try:
+            return sch.search_paper(paper_title)
+        except:
+            print("Request time out, retrying...")
+            time.sleep(5)
 
 def sch_find_authors(author_name):
-    return sch.search_author(author_name)
+    while True:
+        try:
+            return sch.search_author(author_name)
+        except:
+            print("Request time out, retrying...")
+            time.sleep(5)
+    
 
 def sch_doi(paper_title):
     data = sch_find_papers(paper_title)
@@ -146,7 +157,7 @@ def sch_full_name(author_name):
             return normalize_name(full_name)
 
 # Google Scholar API
-serpapi_key = "b66d65860661cf45b951c3f67e3f31c64afce9a83765f1cfb9097c27888d26ab"
+serpapi_key = ""
 
 def query_serpapi_title(title):
     url = "https://serpapi.com/search.json?engine=google_scholar&q="
@@ -205,6 +216,8 @@ def get_author_info(google_scholar_id):
 
     if country == "":
         country = "Unknown"
+
+    university = clear_title(university)
         
     return name, gender, university, country, role
 
@@ -213,7 +226,18 @@ def query_serpapi_cite(paper_id):
     return get_JSON(url + paper_id + "&hl=en&api_key=" + serpapi_key)
 
 def get_info_from_serpapi(paper_title):
-    json = query_serpapi_title(paper_title)
+    while True:
+        try:
+            json = query_serpapi_title(paper_title)
+            if not "organic_results" in json:
+                print("No result found, retrying...")
+                time.sleep(5)
+                continue
+            break
+        except:
+            print("Request error, retrying...")
+            time.sleep(5)
+
     organic_results = json["organic_results"]
     
     title = paper_title
@@ -349,6 +373,14 @@ def clean_data(papers):
 
     # Clean the title
     papers['title'] = papers['title'].apply(clear_title)
+    for i, row in papers.iterrows():
+        # This statement is useful here if the title contain mathematical latex string
+        # Using semantic scholar the mathematical string is resolved in an utf-8 readable string
+        if re.search(r"\{.*\}", row.title): 
+            papers_resolved = sch_find_papers(row.title)
+            for paper in papers_resolved:
+                papers.at[i, 'title'] = paper['title']
+                break
     
     # Add an empty column for the number of citations
     papers['citedByCount'] = 0
@@ -361,6 +393,15 @@ def lookup_scientific_domain(data_folder, scientific_domain_code):
     for item in scientific_domain:
         if item['tag'] == scientific_domain_code:
             return item
+
+def remove_null_strings_from_papers():
+    remove_nulls = ''
+    remove_nulls += f"UPDATE papers SET doi = NULL where doi = 'NULL';\n"
+    remove_nulls += f"UPDATE papers SET comments = NULL where comments = 'NULL';\n"
+    remove_nulls += f"UPDATE papers SET report_no = NULL where report_no = 'NULL';\n"
+    remove_nulls += f"UPDATE papers SET license = NULL where license = 'NULL';\n"
+    remove_nulls += f"UPDATE papers SET publication_venue_id = NULL where publication_venue_id = -1;\n"
+    return remove_nulls 
 
 def prepare_data(data_folder):
     papers = read_data(data_folder)
@@ -379,7 +420,7 @@ def prepare_data(data_folder):
 
     # MySQL
     insert_authors = 'INSERT IGNORE INTO authors (id, first_name, last_name, gender, author_affiliation_id)\n VALUES \n'
-    insert_papers = 'INSERT IGNORE INTO papers (id, year_id, title, doi, comments, report_no, license)\n VALUES \n'
+    insert_papers = 'INSERT IGNORE INTO papers (id, publication_venue_id, year_id, title, doi, comments, report_no, license)\n VALUES \n'
     insert_authors_to_papers = 'INSERT IGNORE INTO author_to_paper (author_id, paper_id)\n VALUES \n'
     insert_scientific_domains_to_paper = 'INSERT IGNORE INTO scientific_domain_to_paper (scientific_domain_id, paper_id)\n VALUES \n'
     insert_authors_affiliation = 'INSERT IGNORE INTO authors_affiliation (id, university, country, role)\n VALUES \n(0, \'Unknown\', \'Unknown\', \'Unknown\'),\n'
@@ -399,9 +440,20 @@ def prepare_data(data_folder):
     insert_paper_to_year_graph = ''
     insert_cites_graph = ''
 
+    # read the json file ids 
+    index_paper = 1
     index_author = 1
     index_affiliation = 1
     index_publication_venue = 1
+
+
+    with open(f'{data_folder}/ids.json', 'r') as f:
+        ids = json.load(f)
+        index_paper = ids['paper']
+        index_author = ids['author']
+        index_affiliation = ids['affiliation']
+        index_publication_venue = ids['publication_venue']
+
     for i, row in papers.iterrows():
         paper_authors = []
 
@@ -504,6 +556,7 @@ def prepare_data(data_folder):
                     insert_coauthors_graph += f'MATCH (a1:Author), (a2:Author) WHERE a1.id = {authors[author]["id"]} and a2.id = {authors[coauthor]["id"]} CREATE (a1)-[:CO_AUTHOR]->(a2)\n'
 
         # ------- ENTITY: PUBLICATION VENUE -------
+        publication_venue_key = ''
         if row.doi:
             doi = row.doi
             if " " in doi:
@@ -520,60 +573,70 @@ def prepare_data(data_folder):
             print(f"DOI: {doi}")
             crossref_paper = query_crossref_API_works(doi)
             type = ""
-            journal = ""
+            source = ""
             publisher = ""
             issn = ""
             print("PAPER: " + row.title)
             if crossref_paper:
                 message = crossref_paper["message"]
                 publisher = message["publisher"]
-                issn = message["ISSN"][0] if message["ISSN"] else "NULL"
-                crossref_journal = query_crossref_API_journals(issn)
-                if crossref_journal:
-                    journal = crossref_journal["message"]["title"]
+                if "ISSN" in message:
+                    issn = message["ISSN"][0]
+                    crossref_journal = query_crossref_API_journals(issn)
+                    if crossref_journal:
+                        source = crossref_journal["message"]["title"]
+                elif "event" in message:
+                    source = message["event"]["name"]
                 type = query_crossref_API_bibtex(doi)
 
-                references = message["reference"]
-                ref_found = False
-                for reference in references:
-                    if "DOI" in reference:
-                        reference_doi = reference["DOI"]
-                        reference_doi = reference_doi.replace("\\", "")
-                        # check if reference_doi is in papers dataframe
-                        
-                        if reference_doi in papers["doi"].values:
-                            # get paper id
-                            reference_id = papers[papers["doi"] == reference_doi].index[0] + 1
-                            # ------- RELATIONSHIP: PAPER - PAPER -------
-                            # GRAPH
-                            insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.id = {i+1} and p2.id = {reference_id} CREATE (p1)-[:CITES]->(p2)\n'
-                            papers.at[reference_id-1, "citedByCount"] += 1
-                            ref_found = True
-                    if not ref_found:
-                        if "unstructured" in reference:
-                            reference_title = reference["unstructured"]
-                            for j, paper in papers.iterrows():
-                                if paper["title"] in reference_title:
-                                    # Increase citedByCount of paper which title is in reference_title
-                                    papers.at[j, "citedByCount"] += 1
-                                    # ------- RELATIONSHIP: PAPER - PAPER -------
-                                    # GRAPH
-                                    insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.id = {i+1} and p2.id = {j+1} CREATE (p1)-[:CITES]->(p2)\n'
-                                    break
+                if "reference" in message:
+                    references = message["reference"]
+                    ref_found = False
+                    for reference in references:
+                        if "DOI" in reference:
+                            reference_doi = reference["DOI"]
+                            reference_doi = reference_doi.replace("\\", "")
+                            # check if reference_doi is in papers dataframe
+                            
+                            if reference_doi in papers["doi"].values:
+                                # get paper id
+                                reference_id = papers[papers["doi"] == reference_doi].index[0] + 1
+                                # ------- RELATIONSHIP: PAPER - PAPER -------
+                                # GRAPH
+                                insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.id = {i+1} and p2.id = {reference_id} CREATE (p1)-[:CITES]->(p2)\n'
+                                papers.at[reference_id-1, "citedByCount"] += 1
+                                ref_found = True
+                        if not ref_found:
+                            if "unstructured" in reference:
+                                reference_title = reference["unstructured"]
+                                for j, paper in papers.iterrows():
+                                    if paper["title"] in reference_title:
+                                        # Increase citedByCount of paper which title is in reference_title
+                                        papers.at[j, "citedByCount"] += 1
+                                        # ------- RELATIONSHIP: PAPER - PAPER -------
+                                        # GRAPH
+                                        insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.id = {i+1} and p2.id = {j+1} CREATE (p1)-[:CITES]->(p2)\n'
+                                        break
 
-            publication_venue_key = type + journal + publisher + issn
+            # ------- ENTITY: PUBLICATION VENUE -------
+            publication_venue_key = type + source + publisher
             if not (publication_venue_key in publication_venues):
                 publication_venues[publication_venue_key] = {
                     "id": index_publication_venue,
                     "type": type,
-                    "journal": journal,
+                    "source": source,
                     "publisher": publisher
                 }
                 index_publication_venue += 1
                 # DATA WAREHOUSE
-                insert_publication_venues += f'({index_publication_venue}, \'{type}\', \'{journal}\', \'{publisher}\', \'{issn}\'),\n'
+                insert_publication_venues += f'({index_publication_venue}, \'{type}\', \'{source}\', \'{publisher}\', \'{issn}\'),\n'
                 # GRAPH
-                insert_publication_venues_graph += f'CREATE (pv{index_publication_venue}:PublicationVenue {{id: {index_publication_venue}, type: "{type}", journal: "{journal}", publisher: "{publisher}", issn: "{issn}"}})\n'
+                insert_publication_venues_graph += f'CREATE (pv{index_publication_venue}:PublicationVenue {{id: {index_publication_venue}, type: "{type}", title: "{source}", publisher: "{publisher}"'
+                if issn != "":
+                    insert_publication_venues_graph += f', issn: "{issn}"}})\n'
+                else:
+                    insert_publication_venues_graph += "})\n"
+
             
             # ------- RELATIONSHIP: PAPER - PUBLICATION VENUE -------
             # GRAPH
@@ -584,14 +647,18 @@ def prepare_data(data_folder):
         report_no = row["report-no"] if row["report-no"] else 'NULL'
         license = row.license if row.license else "NULL"
         creation_year = datetime.strptime(row["versions"][0]['created'], '%a, %d %b %Y %H:%M:%S %Z').year
+        publication_venue_id = -1
+        if publication_venue_key in publication_venues:
+            publication_venue_id = publication_venues[publication_venue_key]["id"]
+        paper_id = i + 1 + index_paper
         # DATA WAREHOUSE
-        insert_papers += f'({i+1}, {creation_year}, \'{row.title}\', \'{doi}\', \'{comments}\', \'{report_no}\', \'{license}\'),\n'
+        insert_papers += f'({paper_id}, {publication_venue_id}, {creation_year}, \'{row.title}\', \'{doi}\', \'{comments}\', \'{report_no}\', \'{license}\'),\n'
         # GRAPH
-        insert_papers_graph += f'CREATE (p{i+1}:Paper {{id: {i+1}, year_id: "{creation_year}", title: "{row.title}", doi: "{doi}", comments: "{comments}", report_no: "{report_no}", license: "{license}"}})\n'
+        insert_papers_graph += f'CREATE (p{paper_id}:Paper {{id: {paper_id}, year_id: "{creation_year}", title: "{row.title}", doi: "{doi}", comments: "{comments}", report_no: "{report_no}", license: "{license}"}})\n'
 
         # ------- RELATIONSHIP: PAPER - YEAR -------
         # GRAPH
-        insert_paper_to_year_graph += f'MATCH (p:Paper), (y:Year) WHERE p.id = {i+1} and y.year = {creation_year} CREATE (p)-[:PUBLISHED_IN]->(y)\n'
+        insert_paper_to_year_graph += f'MATCH (p:Paper), (y:Year) WHERE p.id = {paper_id} and y.year = {creation_year} CREATE (p)-[:PUBLISHED_IN]->(y)\n'
 
         # ------- RELATIONSHIP: PAPER - SCIENTIFIC DOMAIN -------
         scientific_domain_codes = row.categories.split(" ")
@@ -601,10 +668,12 @@ def prepare_data(data_folder):
                 # DATA WAREHOUSE
                 insert_scientific_domains_to_paper += f'{scientific_domain["id"], i},\n'
                 # GRAPH
-                insert_scientific_domain_to_paper_graph += f'MATCH (p:Paper), (s:ScientificDomain) WHERE p.id = {i+1} and s.id = {scientific_domain["id"]} CREATE (p)-[:BELONGS_TO]->(s)\n'
+                insert_scientific_domain_to_paper_graph += f'MATCH (p:Paper), (s:ScientificDomain) WHERE p.id = {paper_id} and s.id = {scientific_domain["id"]} CREATE (p)-[:BELONGS_TO]->(s)\n'
 
     for i, row in papers.iterrows():
-        insert_cites += f"UPDATE papers SET citedByCount = {papers.at[i, 'citedByCount']} WHERE id = {i+1};\n" 
+        insert_cites += f"UPDATE papers SET citedByCount = {papers.at[i, 'citedByCount']} WHERE id = {paper_id};\n" 
+
+    index_paper = index_paper + papers.shape[0]
 
     # DATA WAREHOUSE
     insert_authors = insert_authors[:-2] # Postgres
@@ -619,6 +688,7 @@ def prepare_data(data_folder):
     with open(f'{data_folder}/dw/insert_papers.sql', 'w') as f:
         f.write(insert_papers)
         f.write(insert_cites)
+        f.write(remove_null_strings_from_papers())
     
     insert_authors_to_papers = insert_authors_to_papers[:-2] # Postgres
     # insert_authors_to_papers += '\n ON CONFLICT DO NOTHING;\n' # Postgres
@@ -681,6 +751,16 @@ def prepare_data(data_folder):
     # BOTH
     prepare_scientific_domains(data_folder)
     prepare_year(data_folder)
+
+    # write ids in the file
+    with open(f'{data_folder}/ids.json', 'w') as f:
+        ids = {
+            "author": index_author,
+            "paper": index_paper,
+            "affiliation": index_affiliation,
+            "publication_venue": index_publication_venue,
+        }
+        json.dump(ids, f)
 
 
 with DAG(
@@ -931,6 +1011,17 @@ with DAG(
             retry_delay=timedelta(seconds=10),
         )
 
+        # insert scientific domains to papers in the graph database
+        graph_insert_scientific_domain_to_paper = Neo4jExtendedOperator(
+            task_id='graph_insert_scientific_domain_to_paper',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_scientific_domain_to_paper_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+
         # insert years in the graph database
         graph_insert_years = Neo4jExtendedOperator(
             task_id='graph_insert_years',
@@ -1022,6 +1113,7 @@ with DAG(
         graph_create_constraints >> graph_insert_authors 
         graph_create_constraints >> graph_insert_papers 
         graph_create_constraints >> graph_insert_scientific_domain
+        graph_insert_scientific_domain >> graph_insert_scientific_domain_to_paper
         graph_create_constraints >> graph_insert_years
         graph_create_constraints >> graph_insert_authors_affiliation 
         graph_create_constraints >> graph_insert_publication_venues 
