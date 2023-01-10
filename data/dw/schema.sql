@@ -54,11 +54,13 @@ id SERIAL PRIMARY KEY,
 author_id INT NOT NULL,
 paper_id INT NOT NULL,
 CONSTRAINT fk_author FOREIGN KEY(author_id) REFERENCES authors(id),
-CONSTRAINT fk_paper FOREIGN KEY(paper_id) REFERENCES papers(id)
+CONSTRAINT fk_paper FOREIGN KEY(paper_id) REFERENCES papers(id),
+UNIQUE(author_id, paper_id)
 );
 
 CREATE TABLE IF NOT EXISTS scientific_domain_to_paper (
 id SERIAL PRIMARY KEY,
 scientific_domain_id INT NOT NULL,
-paper_id INT NOT NULL
+paper_id INT NOT NULL,
+UNIQUE(scientific_domain_id, paper_id)
 );

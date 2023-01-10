@@ -154,7 +154,7 @@ def sch_full_name(author_name):
             return normalize_name(full_name)
 
 # Google Scholar API
-serpapi_key = "73b0cf9879f04768e5e4ad20573ccec8d7609f2731008211565711097358085f"
+serpapi_key = "4aaa406574efb726912d2c9a3f8ca95cc640b22074b2cc574d58f87d58ef9c57"
 
 def query_serpapi_title(title):
     try:
