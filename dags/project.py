@@ -469,8 +469,8 @@ def prepare_data(data_folder):
 
         # Loop over all the parsed authors from dataset
         for author in row["authors_parsed"]:
-            first_name = author[1].replace(",", "")
-            last_name = author[0].replace(",", "")
+            first_name = author[1].replace(",", "").replace("á", "a")
+            last_name = author[0].replace(",", "").replace("á", "a")
 
             if first_name.strip() != "":
                 names = normalize_name(first_name + " " + last_name)
@@ -480,7 +480,8 @@ def prepare_data(data_folder):
             
             has_google_scholar_profile = False
             for author in paper_authors:
-                if author == name or (author.split(" ")[0] == name.split(" ")[0] and author.split(" ")[-1] == name.split(" ")[-1]):
+                ## Compare only first letters because authros_parsed has only first letter of the first name.
+                if author == name or (author.split(" ")[0][0] == name.split(" ")[0][0] and author.split(" ")[-1] == name.split(" ")[-1]):
                     has_google_scholar_profile = True
                     break
             if not has_google_scholar_profile: # Author doesn't have a profile in Google Scholar
@@ -517,6 +518,9 @@ def prepare_data(data_folder):
                     key = author
                     break
                 elif author.split(" ")[0] == name.split(" ")[0] and author.split(" ")[-1] == name.split(" ")[-1]:
+                    key = author
+                    break
+                elif author.split(" ")[0][0] == name.split(" ")[0][0] and author.split(" ")[-1] == name.split(" ")[-1]:
                     key = author
                     break
             # DATA WAREHOUSE    
