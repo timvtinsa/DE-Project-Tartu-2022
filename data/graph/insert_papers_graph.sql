@@ -1,0 +1,1 @@
+CREATE (p2:Paper {id: 2, year_id: "2007", title: "Calculation of prompt diphoton production cross sections at Tevatron and LHC energies", doi: "10.1103/PhysRevD.76.013009", comments: "37 pages, 15 figures; published version", report_no: "ANL-HEP-PR-07-12", license: "NULL"})

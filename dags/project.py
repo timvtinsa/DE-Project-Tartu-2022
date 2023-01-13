@@ -25,8 +25,8 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.contrib.sensors.file_sensor import FileSensor
 from airflow.utils.task_group import TaskGroup
 
-# from airflow.providers.neo4j.operators.neo4j import Neo4jOperator
-# from custom_operator.neo4j_extended_operator import Neo4jExtendedOperator
+from airflow.providers.neo4j.operators.neo4j import Neo4jOperator
+from custom_operator.neo4j_extended_operator import Neo4jExtendedOperator
 
 DEFAULT_ARGS = {
     'owner': 'GROUP7',
@@ -336,6 +336,7 @@ def prepare_year(data_folder):
     # ----- ENTITY: YEAR -----
     insert_statement = 'INSERT INTO year_of_publication (year)\n VALUES \n' # Postgres
     # insert_statement = 'INSERT IGNORE INTO year_of_publication (year)\n VALUES \n' # MySQL
+    insert_graph_statement = ''
     year = 2023
     for i in range(200):
         year = year - 1
@@ -345,10 +346,15 @@ def prepare_year(data_folder):
         else:
             insert_statement += f'({year}) \nON CONFLICT DO NOTHING; \n' # Postgres
             # insert_statement += f'({year}); \n' # MySQL
+        # GRAPH
+        insert_graph_statement += f'CREATE (y{year}:Year {{year: {year}}})\n'
 
     # DATA WAREHOUSE
     with open(f'{data_folder}/dw/insert_year.sql', 'w') as f:
         f.write(insert_statement)
+    # GRAPH
+    with open(f'{data_folder}/graph/insert_years_graph.sql', 'w') as f:
+        f.write(insert_graph_statement)
 
 def prepare_scientific_domains(data_folder):
     # ----- ENTITY: SCIENTIFIC DOMAIN -----
@@ -356,6 +362,7 @@ def prepare_scientific_domains(data_folder):
         scientific_domain = json.load(f)
     insert_statement = 'INSERT INTO scientific_domain (id, code, explicit_name)\n VALUES \n' # Postgres
     # insert_statement = 'INSERT IGNORE INTO scientific_domain (id, code, explicit_name)\n VALUES \n' # MySQL
+    insert_graph_statement = ''
     for i, item in enumerate(scientific_domain):
         # DATA WAREHOUSE
         if i < len(scientific_domain) - 1:
@@ -363,16 +370,21 @@ def prepare_scientific_domains(data_folder):
         else:
             insert_statement += f'({item["id"]}, \'{item["tag"]}\', \'{item["name"]}\') \nON CONFLICT DO NOTHING; \n' # Postgres
             # insert_statement += f'({item["id"]}, \'{item["tag"]}\', \'{item["name"]}\');\n' # MySQL
+        # GRAPH
+        insert_graph_statement += f'CREATE (sd{item["id"]}:ScientificDomain {{id: {item["id"]}, code: "{item["tag"]}", explicit_name: "{item["name"]}"}})\n'
 
     # DATA WAREHOUSE
     with open(f'{data_folder}/dw/insert_scientific_domain.sql', 'w') as f:
         f.write(insert_statement)
+    # GRAPH
+    with open(f'{data_folder}/graph/insert_scientific_domain_graph.sql', 'w') as f:
+        f.write(insert_graph_statement)
 
 
 def read_data(data_folder):
     with open(f'{data_folder}/dataframe.json', 'r') as f:
         lines = f.readlines()
-    N = 10
+    N = 1
     papers = pd.DataFrame([json.loads(x) for x in lines])
     papers = papers.head(N)
     return papers
@@ -433,9 +445,32 @@ def prepare_data(data_folder):
     # insert_publication_venues = 'INSERT IGNORE INTO publication_venue (id, type, publisher, title, issn)\n VALUES \n' 
     # insert_cites = ''
 
+    # GRAPH
+    insert_authors_graph = ''
+    insert_papers_graph = ''
+    insert_authors_to_papers_graph = ''
+    insert_coauthors_graph = ''
+    insert_scientific_domain_to_paper_graph = ''
+    insert_authors_affiliation_graph = ''
+    insert_authors_to_affiliation_graph = ''
+    insert_publication_venues_graph = ''
+    insert_publication_venues_to_paper_graph = ''
+    insert_paper_to_year_graph = ''
+    insert_cites_graph = ''
+
+    # read the json file ids 
+    index_paper = 1
     index_author = 1
     index_affiliation = 1
     index_publication_venue = 1
+
+    # with open(f'{data_folder}/ids.json', 'r') as f:
+    #     ids = json.load(f)
+    #     index_paper = ids['paper']
+    #     index_author = ids['author']
+    #     index_affiliation = ids['affiliation']
+    #     index_publication_venue = ids['publication_venue']
+
     for i, row in papers.iterrows():
         paper_authors = []
 
@@ -451,6 +486,8 @@ def prepare_data(data_folder):
                 authors[name] = author
                 # DATA WAREHOUSE
                 insert_authors += f'({index_author}, \'{author["first_name"]}\', \'{author["last_name"]}\', \'{author["gender"]}\', {author["citations_count"]}, {author["h_index"]}'
+                # GRAPH
+                insert_authors_graph += f'CREATE (a{index_author}:Author {{id: {index_author}, first_name: "{author["first_name"]}", last_name : "{author["last_name"]}", gender: "{author["gender"]}"}})\n'
                 index_author += 1
 
             # ------- ENTITY: AFFILIATION -------
@@ -462,8 +499,13 @@ def prepare_data(data_folder):
                     # DATA WAREHOUSE 
                     insert_authors_affiliation += f'({index_affiliation}, \'{author["affiliation"]["university"]}\', \'{author["affiliation"]["country"]}\', \'{author["affiliation"]["role"]}\'),\n'
                     insert_authors += f', {index_affiliation}),\n'
+                    # GRAPH
+                    insert_authors_affiliation_graph += f'CREATE (af{index_affiliation}:Affiliation {{id: {index_affiliation}, name: "{author["affiliation"]["university"]}", country: "{author["affiliation"]["country"]}", role: "{author["affiliation"]["role"]}"}})\n'
                     index_affiliation += 1
-
+                
+                # ------- RELATIONSHIP: AUTHOR - AFFILIATION -------
+                # GRAPH
+                insert_authors_to_affiliation_graph += f'MATCH (a:Person), (af:Affiliation) WHERE a.id = {author["id"]} AND af.id = {index_affiliation} CREATE (a)-[:AFFILIATED_TO]->(af)\n'
             else:
                 insert_authors += f', 0),\n' # Assigning unknown affiliation to author
 
@@ -509,6 +551,8 @@ def prepare_data(data_folder):
                     paper_authors.append(name)
                     # DATA WAREHOUSE
                     insert_authors += f'({index_author}, \'{first_name}\', \'{last_name}\', \'{gender}\', 0, 0, 0),\n'
+                    # GRAPH
+                    insert_authors_graph += f'CREATE (a{index_author}:Author {{id: {index_author}, first_name: "{first_name}", last_name : "{last_name}", gender: "{gender}"}})\n'
                     index_author += 1
 
             # ------- RELATIONSHIP: AUTHOR - PAPER -------
@@ -525,12 +569,16 @@ def prepare_data(data_folder):
                     break
             # DATA WAREHOUSE    
             insert_authors_to_papers += f'({authors[key]["id"]}, {i+1}),\n'
+            # GRAPH
+            insert_authors_to_papers_graph += f'MATCH (a:Author), (p:Paper) WHERE a.id = {authors[key]["id"]} AND p.id = {i+1} CREATE (a)-[:AUTHOR]->(p)\n'
 
         # ------- RELATIONSHIP: AUTHOR - CO_AUTHOR -------
-        # for author in paper_authors:
-        #     for coauthor in paper_authors:
-        #         if author != coauthor:
-
+        for author in paper_authors:
+            for coauthor in paper_authors:
+                if author != coauthor:
+                    # GRAPH
+                    insert_coauthors_graph += f'MATCH (a1:Author), (a2:Author) WHERE a1.id = {authors[author]["id"]} and a2.id = {authors[coauthor]["id"]} CREATE (a1)-[:CO_AUTHOR]->(a2)\n'
+        
         # ------- ENTITY: PUBLICATION VENUE -------
         publication_venue_key = ''
         if row.doi:
@@ -549,67 +597,75 @@ def prepare_data(data_folder):
             print(f"DOI: {doi}")
             crossref_paper = query_crossref_API_works(doi)
             type = ""
-            journal = ""
+            source = ""
             publisher = ""
             issn = ""
             print("PAPER: " + row.title)
             if crossref_paper:
                 message = crossref_paper["message"]
                 publisher = message["publisher"]
-                issn = message["ISSN"][0] if message["ISSN"] else "NULL"
-                crossref_journal = query_crossref_API_journals(issn)
-                if crossref_journal:
-                    journal = crossref_journal["message"]["title"]
+                if "ISSN" in message:
+                    issn = message["ISSN"][0]
+                    crossref_journal = query_crossref_API_journals(issn)
+                    if crossref_journal:
+                        source = crossref_journal["message"]["title"]
+                elif "event" in message:
+                    source = message["event"]["name"]
                 type = query_crossref_API_bibtex(doi)
-                try:
-                    references = message["reference"]
-                except KeyError:
-                    references = []    
-                ref_found = False
-                for reference in references:
-                    if "DOI" in reference:
-                        reference_doi = reference["DOI"]
-                        reference_doi = reference_doi.replace("\\", "")
-                        # check if reference_doi is in papers dataframe
-                        
-                        if reference_doi in papers["doi"].values:
-                            # get paper id
-                            reference_id = papers[papers["doi"] == reference_doi].index[0] + 1
-                            # ------- RELATIONSHIP: PAPER - PAPER -------
-                            # GRAPH
-                            # insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.id = {i+1} and p2.id = {reference_id} CREATE (p1)-[:CITES]->(p2)\n'
-                            papers.at[reference_id-1, "citedByCount"] += 1
-                            ref_found = True
-                    if not ref_found:
-                        if "unstructured" in reference:
-                            reference_title = reference["unstructured"]
-                            for j, paper in papers.iterrows():
-                                if paper["title"] in reference_title:
-                                    # Increase citedByCount of paper which title is in reference_title
-                                    papers.at[j, "citedByCount"] += 1
-                                    # ------- RELATIONSHIP: PAPER - PAPER -------
-                                    # GRAPH
-                                    # insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.id = {i+1} and p2.id = {j+1} CREATE (p1)-[:CITES]->(p2)\n'
-                                    break
 
-            publication_venue_key = type + journal + publisher + issn
+                if "reference" in message:
+                    references = message["reference"]
+                    ref_found = False
+                    for reference in references:
+                        if "DOI" in reference:
+                            reference_doi = reference["DOI"]
+                            reference_doi = reference_doi.replace("\\", "")
+                            # check if reference_doi is in papers dataframe
+                            
+                            if reference_doi in papers["doi"].values:
+                                # get paper id
+                                reference_id = papers[papers["doi"] == reference_doi].index[0] + 1
+                                # ------- RELATIONSHIP: PAPER - PAPER -------
+                                # GRAPH
+                                insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.id = {i+1} and p2.id = {reference_id} CREATE (p1)-[:CITES]->(p2)\n'
+                                papers.at[reference_id-1, "citedByCount"] += 1
+                                ref_found = True
+                        if not ref_found:
+                            if "unstructured" in reference:
+                                reference_title = reference["unstructured"]
+                                for j, paper in papers.iterrows():
+                                    if paper["title"] in reference_title:
+                                        # Increase citedByCount of paper which title is in reference_title
+                                        papers.at[j, "citedByCount"] += 1
+                                        # ------- RELATIONSHIP: PAPER - PAPER -------
+                                        # GRAPH
+                                        insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.id = {i+1} and p2.id = {j+1} CREATE (p1)-[:CITES]->(p2)\n'
+                                        break
+
+            # ------- ENTITY: PUBLICATION VENUE -------
+            publication_venue_key = type + source + publisher
             if not (publication_venue_key in publication_venues):
                 publication_venues[publication_venue_key] = {
                     "id": index_publication_venue,
                     "type": type,
-                    "journal": journal,
+                    "source": source,
                     "publisher": publisher
                 }
                 index_publication_venue += 1
                 # DATA WAREHOUSE
-                insert_publication_venues += f'({index_publication_venue}, \'{type}\', \'{journal}\', \'{publisher}\', \'{issn}\'),\n'
+                insert_publication_venues += f'({index_publication_venue}, \'{type}\', \'{source}\', \'{publisher}\', \'{issn}\'),\n'
                 # GRAPH
-                # insert_publication_venues_graph += f'CREATE (pv{index_publication_venue}:PublicationVenue {{id: {index_publication_venue}, type: "{type}", journal: "{journal}", publisher: "{publisher}", issn: "{issn}"}})\n'
+                insert_publication_venues_graph += f'CREATE (pv{index_publication_venue}:PublicationVenue {{id: {index_publication_venue}, type: "{type}", title: "{source}", publisher: "{publisher}"'
+                if issn != "":
+                    insert_publication_venues_graph += f', issn: "{issn}"}})\n'
+                else:
+                    insert_publication_venues_graph += "})\n"
+
             
             # ------- RELATIONSHIP: PAPER - PUBLICATION VENUE -------
             # GRAPH
-            # insert_publication_venues_to_paper_graph += f'MATCH (pv:PublicationVenue), (p:Paper) WHERE pv.id = {publication_venues[publication_venue_key]["id"]} and p.id = {i+1} CREATE (pv)-[:PUBLISHED_IN]->(p)\n'
-            
+            insert_publication_venues_to_paper_graph += f'MATCH (pv:PublicationVenue), (p:Paper) WHERE pv.id = {publication_venues[publication_venue_key]["id"]} and p.id = {i+1} CREATE (pv)-[:PUBLISHED_IN]->(p)\n'
+
         # ------- ENTITY: PAPER -------
         comments = clear_title(row.comments)
         report_no = row["report-no"] if row["report-no"] else 'NULL'
@@ -618,9 +674,16 @@ def prepare_data(data_folder):
         publication_venue_id = -1
         if publication_venue_key in publication_venues:
             publication_venue_id = publication_venues[publication_venue_key]["id"]
+        paper_id = i + 1 + index_paper
         # DATA WAREHOUSE
-        insert_papers += f'({i+1}, {publication_venue_id}, {creation_year}, \'{row.title}\', \'{doi}\', \'{comments}\', \'{report_no}\', \'{license}\'),\n'
-        
+        insert_papers += f'({paper_id}, {publication_venue_id}, {creation_year}, \'{row.title}\', \'{doi}\', \'{comments}\', \'{report_no}\', \'{license}\'),\n'
+        # GRAPH
+        insert_papers_graph += f'CREATE (p{paper_id}:Paper {{id: {paper_id}, year_id: "{creation_year}", title: "{row.title}", doi: "{doi}", comments: "{comments}", report_no: "{report_no}", license: "{license}"}})\n'
+
+        # ------- RELATIONSHIP: PAPER - YEAR -------
+        # GRAPH
+        insert_paper_to_year_graph += f'MATCH (p:Paper), (y:Year) WHERE p.id = {paper_id} and y.year = {creation_year} CREATE (p)-[:PUBLISHED_IN]->(y)\n'
+
         # ------- RELATIONSHIP: PAPER - SCIENTIFIC DOMAIN -------
         scientific_domain_codes = row.categories.split(" ")
         for scientific_domain_code in scientific_domain_codes:
@@ -628,9 +691,13 @@ def prepare_data(data_folder):
             if scientific_domain:
                 # DATA WAREHOUSE
                 insert_scientific_domain_to_paper += f'{scientific_domain["id"], i},\n'
+                # GRAPH
+                insert_scientific_domain_to_paper_graph += f'MATCH (p:Paper), (s:ScientificDomain) WHERE p.id = {paper_id} and s.id = {scientific_domain["id"]} CREATE (p)-[:BELONGS_TO]->(s)\n'
 
     for i, row in papers.iterrows():
         insert_cites += f"UPDATE papers SET citedByCount = {papers.at[i, 'citedByCount']} WHERE id = {i+1};\n" 
+    
+    index_paper = index_paper + papers.shape[0]
 
     # DATA WAREHOUSE
     insert_authors = insert_authors[:-2] # Postgres
@@ -672,9 +739,53 @@ def prepare_data(data_folder):
     with open(f'{data_folder}/dw/insert_authors_affiliation.sql', 'w') as f:
         f.write(insert_authors_affiliation)
 
+    # GRAPH
+    with open(f'{data_folder}/graph/insert_authors_graph.sql', 'w') as f:
+        f.write(insert_authors_graph)
+
+    with open(f'{data_folder}/graph/insert_coauthors_graph.sql', 'w') as f:
+        f.write(insert_coauthors_graph)
+
+    with open(f'{data_folder}/graph/insert_papers_graph.sql', 'w') as f:
+        f.write(insert_papers_graph)
+
+    with open(f'{data_folder}/graph/insert_authors_to_papers_graph.sql', 'w') as f:
+        f.write(insert_authors_to_papers_graph)
+    
+    with open(f'{data_folder}/graph/insert_scientific_domain_to_paper_graph.sql', 'w') as f:
+        f.write(insert_scientific_domain_to_paper_graph)
+
+    with open(f'{data_folder}/graph/insert_publication_venues_graph.sql', 'w') as f:
+        f.write(insert_publication_venues_graph)
+
+    with open(f'{data_folder}/graph/insert_publication_venues_to_paper_graph.sql', 'w') as f:
+        f.write(insert_publication_venues_to_paper_graph)
+
+    with open(f'{data_folder}/graph/insert_authors_affiliation_graph.sql', 'w') as f:
+        f.write(insert_authors_affiliation_graph)
+
+    with open(f'{data_folder}/graph/insert_authors_to_affiliation_graph.sql', 'w') as f:
+        f.write(insert_authors_to_affiliation_graph)
+
+    with open(f'{data_folder}/graph/insert_paper_to_year_graph.sql', 'w') as f:
+        f.write(insert_paper_to_year_graph)
+
+    with open(f'{data_folder}/graph/insert_cites_graph.sql', 'w') as f:
+        f.write(insert_cites_graph)
+
     # BOTH
     prepare_scientific_domains(data_folder)
     prepare_year(data_folder)
+
+    #write ids in the file
+    with open(f'{data_folder}/ids.json', 'w') as f:
+        ids = {
+            "author": index_author,
+            "paper": index_paper,
+            "affiliation": index_affiliation,
+            "publication_venue": index_publication_venue,
+        }
+        json.dump(ids, f)
 
 
 with DAG(
@@ -862,5 +973,180 @@ with DAG(
         # )
 
         dw_create_tables >> dw_insert_authors >> dw_insert_scientific_domain >> dw_insert_papers >> dw_insert_authors_to_papers >> dw_insert_publication_venues >> dw_insert_year >> dw_insert_authors_affiliation >> dw_insert_scientific_domain_to_paper
+        
+        global cypher_script
+    def read_statement(ti, data_folder, file_name):
+        with open(f'{data_folder}/graph/{file_name}', 'r') as f:
+            cypher_script = f.read()
+            print(cypher_script)
+            ti.xcom_push(key='cypher_script', value=cypher_script)
+
+    # GRAPH DATABASE CONSTRAINTS
+    with TaskGroup("graph_insert_data", tooltip="insert data in the graph database") as graph_insert_data:
+        graph_create_constraints = Neo4jExtendedOperator(
+            task_id='graph_create_constraints',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/constraints.sql',
+            is_sql_file=True,
+            dag=project,
+        )
+
+        # insert the authors in the graph database
+        graph_insert_authors = Neo4jExtendedOperator(
+            task_id='graph_insert_authors',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_authors_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+
+        # insert the papers in the graph database
+        graph_insert_papers = Neo4jExtendedOperator(
+            task_id='graph_insert_papers',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_papers_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+
+        # insert cites in the graph database
+        graph_insert_cites = Neo4jExtendedOperator(
+            task_id='graph_insert_cites',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_cites_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+        
+        # insert the scientific domains in the graph database
+        graph_insert_scientific_domain = Neo4jExtendedOperator(
+            task_id='graph_insert_scientific_domain',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_scientific_domain_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+
+        # insert scientific domains to papers in the graph database
+        graph_insert_scientific_domain_to_paper = Neo4jExtendedOperator(
+            task_id='graph_insert_scientific_domain_to_paper',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_scientific_domain_to_paper_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+
+        # insert years in the graph database
+        graph_insert_years = Neo4jExtendedOperator(
+            task_id='graph_insert_years',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_years_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+
+        # insert publication venues in the graph database
+        graph_insert_publication_venues = Neo4jExtendedOperator(
+            task_id='graph_insert_publication_venues',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_publication_venues_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+
+        # insert publication venues to papers in the graph database
+        graph_insert_publication_venues_to_paper = Neo4jExtendedOperator(
+            task_id='graph_insert_publication_venues_to_paper',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_publication_venues_to_paper_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+
+        # insert author's affiliation in the graph database
+        graph_insert_authors_affiliation = Neo4jExtendedOperator(
+            task_id='graph_insert_authors_affiliation',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_authors_affiliation_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+
+        # insert authors to papers in the graph database
+        graph_insert_authors_to_papers = Neo4jExtendedOperator(
+            task_id='graph_insert_authors_to_papers',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_authors_to_papers_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+
+        # insert authors to affiliation in the graph database
+        graph_insert_authors_to_affiliation = Neo4jExtendedOperator(
+            task_id='graph_insert_authors_to_affiliation',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_authors_to_affiliation_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+
+        # insert coauthors in the graph database
+        graph_insert_coauthors = Neo4jExtendedOperator(
+            task_id='graph_insert_coauthors',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_coauthors_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+
+        # insert paper to year in the graph database
+        graph_insert_paper_to_year = Neo4jExtendedOperator(
+            task_id='graph_insert_paper_to_year',
+            neo4j_conn_id='neo4j_connection',
+            sql=f'{DATA_FOLDER}/graph/insert_paper_to_year_graph.sql',
+            is_sql_file=True,
+            dag=project,
+            retries=1,
+            retry_delay=timedelta(seconds=10),
+        )
+
+        graph_create_constraints >> graph_insert_authors 
+        graph_create_constraints >> graph_insert_papers 
+        graph_create_constraints >> graph_insert_scientific_domain
+        graph_insert_scientific_domain >> graph_insert_scientific_domain_to_paper
+        graph_create_constraints >> graph_insert_years
+        graph_create_constraints >> graph_insert_authors_affiliation 
+        graph_create_constraints >> graph_insert_publication_venues 
+        [graph_insert_papers, graph_insert_years] >> graph_insert_paper_to_year
+        [graph_insert_publication_venues, graph_insert_papers] >> graph_insert_publication_venues_to_paper
+        [graph_insert_authors, graph_insert_papers] >> graph_insert_authors_to_papers
+        [graph_insert_authors, graph_insert_authors_affiliation] >> graph_insert_authors_to_affiliation 
+        graph_insert_authors >> graph_insert_coauthors
+        graph_insert_papers >> graph_insert_cites
 
 prepare_data_for_insert >> dw_insert_data
+prepare_data_for_insert >> graph_insert_data

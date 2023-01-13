@@ -58,7 +58,8 @@ x-airflow-common:
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:- semanticscholar gender_guesser}
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:- semanticscholar gender_guesser apache-airflow-providers-neo4j}
+
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -276,6 +277,19 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+  
+  neo:
+    container_name: neo4j
+    image: neo4j:community
+    ports:
+        - 7474:7474
+        - 7687:7687
+    restart: always
+    environment:
+      - NEO4J_AUTH=none
+    volumes:
+      - ./neo4j/data:/data
+      - ./neo4j/conf:/conf
 
 volumes:
   postgres-db-volume:
