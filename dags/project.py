@@ -11,8 +11,10 @@ from datetime import datetime, timedelta
 import gender_guesser.detector as gender
 
 from semanticscholar import SemanticScholar
+from scholarly import scholarly, ProxyGenerator
 from datetime import timedelta
 from urllib.request import urlopen
+from unidecode import unidecode
 
 from airflow import DAG
 from airflow.utils.trigger_rule import TriggerRule
@@ -25,7 +27,9 @@ from airflow.providers.postgres.hooks.postgres import PostgresHook
 from airflow.contrib.sensors.file_sensor import FileSensor
 from airflow.utils.task_group import TaskGroup
 
-
+from utils import *
+from info import *
+from api.gender import *
 
 from airflow.providers.neo4j.operators.neo4j import Neo4jOperator
 from custom_operator.neo4j_extended_operator import Neo4jExtendedOperator
@@ -36,280 +40,11 @@ DEFAULT_ARGS = {
     'retries': 1,
     'retry_delay': timedelta(minutes=5)
 }
+
 DATA_FOLDER = '/tmp/data'
 
-DUMMY_CONSTANTS = {
-    'gender': 'M',
-    'citations_count': 1,
-    'h_index': 1
-}
-
-GENDER_MAPPING = {
-    'male': "M",
-    'female': "F",
-}
-
-MOCK_API = False
-MOCK_FOLDER = "API_mock_data"
-
-genderDetector = gender.Detector()
-
-def get_JSON(URL):
-    response = urlopen(URL)
-    decoded = response.read().decode("utf-8")
-    return json.loads(decoded)
-
-def get_text(URL):
-    response = urlopen(URL)
-    decoded = response.read().decode("utf-8")
-    return decoded
-
-def normalize_title(title):
-    return " ".join(title.strip().title().split()).replace(".", "")
-    
-def normalize_name(name):
-    name = name.replace(".", ". ")
-    name = name.replace("-", " -")
-    name = name.replace("'", "")
-    name_components = re.split(r"\s+", name.strip())
-
-    def mapper(name):
-        if re.fullmatch(r"-*\w", name):
-            return (name + ".").title()
-        return name.title()
-        
-    name = " ".join(list(map(mapper, name_components))).replace(" -", "-")
-    parts = name.split()
-    first_name = " ".join(parts[:-1])
-    last_name = parts[len(parts)-1]
-    return [first_name, last_name, name]
-
-def clear_title(title):
-    if title is not None:
-        title = title.replace("\n", "")
-        title = title.replace("'", "")
-        title = title.replace("\\", "")
-        title = title.replace('"', "")
-        title = title.replace('  ', " ")
-    return title if title else 'NULL'
-
-def parse_first_name(normalized_name):
-    return " ".join(normalized_name.split()[:-1])
-
-def parse_last_name(normalized_name):
-    return normalized_name.split()[-1]
-
-def is_full_name(normalized_name):
-    return (len(normalized_name) > 1) and not re.search(r"\.", normalized_name)
-
-# Semantic Scholar API
-sch = SemanticScholar(timeout=20)
-
-def sch_find_papers(paper_title):
-    while True:
-        try:
-            return sch.search_paper(paper_title)
-        except:
-            print("Request time out, retrying...")
-            time.sleep(5)
-
-def sch_find_authors(author_name):
-    while True:
-        try:
-            return sch.search_author(author_name)
-        except:
-            print("Request time out, retrying...")
-            time.sleep(5)
-    
-
-def sch_doi(paper_title):
-    data = sch_find_papers(paper_title)
-    normalized_title = normalize_title(paper_title)
-    for paper in data:
-        if normalize_title(paper.title) == normalized_title:
-            return paper.externalIds.get("DOI", None)
-    return None
-
-def sch_full_name(author_name):
-    data = sch_find_authors(author_name)
-    norm_author_name = normalize_name(author_name)
-
-    for author in data:
-        match_found = False
-        if author.aliases:
-            names = [author.name] + author.aliases
-        else:
-            names = [author.name]
-
-        full_name = None
-
-        for name in names:
-            norm_name = normalize_name(name)
-            first_name = parse_first_name(norm_name)
-            
-            if is_full_name(first_name):
-                full_name = name
-
-            if norm_author_name == norm_name:
-                match_found = True
-
-        if match_found and full_name:
-            return normalize_name(full_name)
-
-# Google Scholar API
-serpapi_key = ""
-
-def query_serpapi_title(title):
-    url = "https://serpapi.com/search.json?engine=google_scholar&q="
-    query_title = "+".join(title.split())
-    return get_JSON(url + query_title + "&hl=en&api_key=" + serpapi_key)
-
-def query_serpapi_author(author_id):
-    url = "https://serpapi.com/search.json?engine=google_scholar_author&author_id="
-    return get_JSON(url + author_id + "&hl=en&api_key=" + serpapi_key)
-
-def full_name(name):
-    full_name = None
-    first_name = parse_first_name(name)
-
-    if not is_full_name(first_name):
-        full_name = sch_full_name(name)
-    else:
-        full_name = name
-    
-    return full_name
-
-def get_author_info(google_scholar_id):
-    json = query_serpapi_author(google_scholar_id)
-
-    name = normalize_name(json["author"]["name"])
-    # name = full_name(name)
-
-    genderResult = genderDetector.get_gender(name[0].split(" ")[0])
-    gender = 'X'
-    if genderResult == 'female' or genderResult == 'male':
-        gender = GENDER_MAPPING[genderResult]
-    
-    affiliation = json["author"]["affiliations"]
-    role = ""
-    university = ""
-    country = ""
-
-    if "," in affiliation:
-        role = affiliation.split(",")[0:-1]
-        role = ", ".join(role)
-        university = affiliation.split(",")[-1].strip()
-    else:
-        role = "Unknown"
-
-    email_info = json["author"]["email"].strip()
-    if email_info != "":
-        # Get rid of "Verified email at"
-        email_domain = email_info.split()[-1]
-        university_lookup, country = get_university_name(email_domain)
-    
-    if university == "":
-        if university_lookup != "":
-            university = university_lookup
-        else:
-            university = affiliation
-
-    if country == "":
-        country = "Unknown"
-
-    university = clear_title(university)
-        
-    return name, gender, university, country, role
-
-def query_serpapi_cite(paper_id):
-    url = "https://serpapi.com/search.json?engine=google_scholar_cite&q="
-    return get_JSON(url + paper_id + "&hl=en&api_key=" + serpapi_key)
-
-def get_info_from_serpapi(paper_title):
-    while True:
-        try:
-            json = query_serpapi_title(paper_title)
-            if not "organic_results" in json:
-                print("No result found, retrying...")
-                time.sleep(5)
-                continue
-            break
-        except:
-            print("Request error, retrying...")
-            time.sleep(5)
-
-    organic_results = json["organic_results"]
-    
-    title = paper_title
-    authors = {}
-
-    if (len(organic_results) > 0):
-        first_result = organic_results[0]
-        title = first_result["title"]
-        
-        # If some authors of the paper have a Google Scholar profile
-        if "authors" in first_result["publication_info"]:
-            authors_json = first_result["publication_info"]["authors"]
-            # Some authors of the paper might be missing
-            for json in authors_json:
-                author_id = json["author_id"]
-
-                name, gender, university, country, role = get_author_info(author_id)
-                first_name = name[0]
-                last_name = name[1]
-                authors[" ".join(name)] = {
-                    "google_scholar_id": author_id,
-                    "gender": gender,
-                    "affiliation": {
-                        "university": university,
-                        "role": role,
-                        "country": country
-                    },
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "full_name": first_name + " " + last_name
-                }
-
-    return title, authors
-
-# University Domain API
-def query_university_domain_API(domain):
-    url = "http://universities.hipolabs.com/search?domain="
-    return get_JSON(url + domain)
-
-def get_university_name(email_domain):
-    # In case of pa.msu.edu, university domain API returns nothing.
-    # But msu.edu gives Michigan State University. So we need to 
-    # only use last two parts of domain (msu.edu).
-    split_by_dot = email_domain.split(".")
-    if len(split_by_dot) > 2:
-        email_domain = ".".join(split_by_dot[-2:])
-    
-    domain_API_json = query_university_domain_API(email_domain)
-    if len(domain_API_json) > 0:
-        return domain_API_json[0]["name"], domain_API_json[0]["country"]
-    return "", ""
-
-# Crossref API
-def query_crossref_API_works(doi):
-    url = "https://api.crossref.org/works/"
-    return get_JSON(url + doi)
-
-def query_crossref_API_journals(issn):
-    url = "https://api.crossref.org/journals/"
-    return get_JSON(url + issn)
-
-def query_crossref_API_bibtex(doi):
-    url = 'http://api.crossref.org/works/' + doi + '/transform/application/x-bibtex'
-    bibtex = get_text(url)
-    for line in bibtex.splitlines():
-        if line.startswith("@"):
-            return line.split("{")[0].replace("@", "")
-
-# Pipeline
 def prepare_year(data_folder):
     # ----- ENTITY: YEAR -----
-    # insert_statement = 'INSERT INTO year_of_publication (year)\n VALUES \n' # Postgres
     insert_statement = 'INSERT IGNORE INTO year_of_publication (year)\n VALUES \n' # MySQL
     insert_graph_statement = ''
     year = 2023
@@ -322,7 +57,7 @@ def prepare_year(data_folder):
             # insert_statement += f'({year}) \nON CONFLICT DO NOTHING; \n' # Postgres
             insert_statement += f'({year}); \n' # MySQL
         # GRAPH
-        insert_graph_statement += f'CREATE (y{year}:Year {{year: {year}}})\n'
+        insert_graph_statement += f'MERGE (y{year}:Year {{year: {year}}})\n'
 
     # DATA WAREHOUSE
     with open(f'{data_folder}/dw/insert_year.sql', 'w') as f:
@@ -335,18 +70,16 @@ def prepare_scientific_domains(data_folder):
     # ----- ENTITY: SCIENTIFIC DOMAIN -----
     with open(f'{data_folder}/scientific_domain_lookup.json', 'r') as f:
         scientific_domain = json.load(f)
-    # insert_statement = 'INSERT INTO scientific_domain (id, code, explicit_name)\n VALUES \n' # Postgres
-    insert_statement = 'INSERT IGNORE INTO scientific_domain (id, code, explicit_name)\n VALUES \n' # MySQL
+    insert_statement = 'INSERT INTO scientific_domain (code, explicit_name)\n VALUES \n' # MySQL
     insert_graph_statement = ''
     for i, item in enumerate(scientific_domain):
         # DATA WAREHOUSE
         if i < len(scientific_domain) - 1:
-            insert_statement += f'({item["id"]}, \'{item["tag"]}\', \'{item["name"]}\'),\n'
+            insert_statement += f'(\'{item["tag"]}\', \'{item["name"]}\'),\n'
         else:
-            # insert_statement += f'({item["id"]}, \'{item["tag"]}\', \'{item["name"]}\') \nON CONFLICT DO NOTHING; \n' # Postgres
-            insert_statement += f'({item["id"]}, \'{item["tag"]}\', \'{item["name"]}\');\n' # MySQL
+            insert_statement += f'(\'{item["tag"]}\', \'{item["name"]}\') ON DUPLICATE KEY UPDATE explicit_name = VALUES(explicit_name);\n' # MySQL
         # GRAPH
-        insert_graph_statement += f'CREATE (sd{item["id"]}:ScientificDomain {{id: {item["id"]}, code: "{item["tag"]}", explicit_name: "{item["name"]}"}})\n'
+        insert_graph_statement += f'MERGE (sd{item["id"]}:ScientificDomain {{code: "{item["tag"]}", explicit_name: "{item["name"]}"}})\n'
 
     # DATA WAREHOUSE
     with open(f'{data_folder}/dw/insert_scientific_domain.sql', 'w') as f:
@@ -355,11 +88,10 @@ def prepare_scientific_domains(data_folder):
     with open(f'{data_folder}/graph/insert_scientific_domain_graph.sql', 'w') as f:
         f.write(insert_graph_statement)
 
-
 def read_data(data_folder):
     with open(f'{data_folder}/dataframe.json', 'r') as f:
         lines = f.readlines()
-    N = 100
+    N = 1000
     papers = pd.DataFrame([json.loads(x) for x in lines])
     papers = papers.head(N)
     return papers
@@ -371,17 +103,37 @@ def clean_data(papers):
     # Remove papers whose title is empty or length is less than one word
     papers = papers[papers['title'].str.split().str.len() > 1]
 
-    # Clean the title
+    # Clean the title and the doi
     papers['title'] = papers['title'].apply(clear_title)
     for i, row in papers.iterrows():
         # This statement is useful here if the title contain mathematical latex string
         # Using semantic scholar the mathematical string is resolved in an utf-8 readable string
         if re.search(r"\{.*\}", row.title): 
+            print("[RESOLVING TITLE] " + row.title)
             papers_resolved = sch_find_papers(row.title)
             for paper in papers_resolved:
-                papers.at[i, 'title'] = paper['title']
+                new_title = clear_title(paper['title'])
+                print("[RESOLVED TITLE] " + new_title)
+                papers.at[i, 'title'] = new_title
                 break
-    
+
+        # This statement is useful here if the doi is null in the dataset
+        if row.doi:
+            doi = row.doi
+            if " " in doi:
+                doi = doi.split(" ")[0]
+            elif doi == "null":
+                print("[RESOLVING DOI]")
+                doi_lookup = sch_doi(row.title)
+                if doi_lookup:
+                    print("[RESOLVED DOI] " + doi_lookup)
+                    doi = doi_lookup
+                else:
+                    doi = "NULL"
+        if doi != "NULL":
+            doi = doi.replace("\\", "")
+            papers.at[i, "doi"] = doi   
+
     # Add an empty column for the number of citations
     papers['citedByCount'] = 0
 
@@ -400,8 +152,23 @@ def remove_null_strings_from_papers():
     remove_nulls += f"UPDATE papers SET comments = NULL where comments = 'NULL';\n"
     remove_nulls += f"UPDATE papers SET report_no = NULL where report_no = 'NULL';\n"
     remove_nulls += f"UPDATE papers SET license = NULL where license = 'NULL';\n"
-    remove_nulls += f"UPDATE papers SET publication_venue_id = NULL where publication_venue_id = -1;\n"
     return remove_nulls 
+
+
+def prepare_author_citations_count(authors, papers):
+    insert_authors_citations_count = ""
+    insert_authors_citations_count_graph = ""
+    for author_key in authors:
+        papers_published = authors[author_key]["papers"]
+        total_citations = 0
+        for paper in papers_published:
+            nb_citations = papers.at[paper-1, "citedByCount"]
+            total_citations += nb_citations
+        # DATA WAREHOUSE
+        insert_authors_citations_count += f"UPDATE authors SET citations_count = citations_count + {total_citations} WHERE first_name = '{mysql_escape_string(authors[author_key]['first_name'])}' AND last_name = '{mysql_escape_string(authors[author_key]['last_name'])}';\n"
+        # GRAPH
+        insert_authors_citations_count_graph += f'MATCH (a:Author) WHERE a.first_name = "{authors[author_key]["first_name"]}" AND a.last_name = "{authors[author_key]["last_name"]}" SET a.citations_count = a.citations_count + {total_citations}\n'
+    return insert_authors_citations_count, insert_authors_citations_count_graph
 
 def prepare_data(data_folder):
     papers = read_data(data_folder)
@@ -409,23 +176,17 @@ def prepare_data(data_folder):
     authors = {}
     affiliations = {}
     publication_venues = {}
-    # OLAP SQL
-    # Postgres
-    # insert_authors = 'INSERT INTO authors (id, first_name, last_name, gender, author_affiliation_id)\n VALUES \n'
-    # insert_papers = 'INSERT INTO papers (id, year_id, title, doi, comments, report_no, license)\n VALUES \n'
-    # insert_authors_to_papers = 'INSERT INTO author_to_paper (author_id, paper_id)\n VALUES \n'
-    # insert_scientific_domains_to_paper = 'INSERT INTO scientific_domain_to_paper (scientific_domain_id, paper_id)\n VALUES \n'
-    # insert_authors_affiliation = 'INSERT INTO authors_affiliation (id, university, country, role)\n VALUES \n(0, \'Unknown\', \'Unknown\', \'Unknown\'),\n'
-    # insert_publication_venues = 'INSERT INTO publication_venue (id, type, publisher, title, issn)\n VALUES \n' 
 
-    # MySQL
-    insert_authors = 'INSERT IGNORE INTO authors (id, first_name, last_name, gender, author_affiliation_id)\n VALUES \n'
-    insert_papers = 'INSERT IGNORE INTO papers (id, publication_venue_id, year_id, title, doi, comments, report_no, license)\n VALUES \n'
-    insert_authors_to_papers = 'INSERT IGNORE INTO author_to_paper (author_id, paper_id)\n VALUES \n'
+    # DATA WAREHOUSE
+    insert_authors = 'INSERT INTO authors (first_name, last_name, gender, author_affiliation_id)\n VALUES \n'
+    insert_papers = 'INSERT INTO papers (arxiv_id, publication_venue_id, year_id, title, doi, comments, report_no, license)\n VALUES \n'
+    insert_authors_to_papers = 'INSERT INTO author_to_paper (author_id, paper_id)\n VALUES \n'
     insert_scientific_domains_to_paper = 'INSERT IGNORE INTO scientific_domain_to_paper (scientific_domain_id, paper_id)\n VALUES \n'
-    insert_authors_affiliation = 'INSERT IGNORE INTO authors_affiliation (id, university, country, role)\n VALUES \n(0, \'Unknown\', \'Unknown\', \'Unknown\'),\n'
-    insert_publication_venues = 'INSERT IGNORE INTO publication_venue (id, type, publisher, title, issn)\n VALUES \n' 
+    insert_authors_affiliation = 'INSERT IGNORE INTO authors_affiliation (university, country, role)\n VALUES \n(\'Unknown\', \'Unknown\', \'Unknown\'),\n'
+    insert_publication_venues = 'INSERT INTO publication_venue (type, publisher, title, issn)\n VALUES \n(\'Unknown\', \'Unknown\', \'Unknown\', \'Unknown\'),\n' 
     insert_cites = ''
+    insert_authors_to_affiliation = ''
+    insert_papers_to_publication_venue = ''
 
     # GRAPH
     insert_authors_graph = ''
@@ -440,25 +201,18 @@ def prepare_data(data_folder):
     insert_paper_to_year_graph = ''
     insert_cites_graph = ''
 
-    # read the json file ids 
-    index_paper = 1
     index_author = 1
     index_affiliation = 1
     index_publication_venue = 1
 
-
-    with open(f'{data_folder}/ids.json', 'r') as f:
-        ids = json.load(f)
-        index_paper = ids['paper']
-        index_author = ids['author']
-        index_affiliation = ids['affiliation']
-        index_publication_venue = ids['publication_venue']
-
     for i, row in papers.iterrows():
+        print("[INGESTING PAPER] " + str(i) + " - " + row.title)
         paper_authors = []
+        paper_id = i + 1
 
         # For authors who have a profile in Google Scholar
-        title_serp, authors_serp = get_info_from_serpapi(row.title)
+        authors_serp = {}
+        # title_serp, authors_serp = get_paper_info(row.title)
         for author in authors_serp.values():
             name = author['full_name']
             paper_authors.append(name)
@@ -467,52 +221,56 @@ def prepare_data(data_folder):
                 author['id'] = index_author
                 authors[name] = author
                 # DATA WAREHOUSE
-                insert_authors += f'({index_author}, \'{author["first_name"]}\', \'{author["last_name"]}\', \'{author["gender"]}\''
+                insert_authors += f'(\'{mysql_escape_string(author["first_name"])}\', \'{mysql_escape_string(author["last_name"])}\', \'{author["gender"]}\', 1),\n'
                 # GRAPH
-                insert_authors_graph += f'CREATE (a{index_author}:Author {{id: {index_author}, first_name: "{author["first_name"]}", last_name : "{author["last_name"]}", gender: "{author["gender"]}"}})\n'
+                insert_authors_graph += f'MERGE (a{index_author}:Author {{first_name: "{author["first_name"]}", last_name : "{author["last_name"]}", gender: "{author["gender"]}"}})\n'
                 index_author += 1
+
+            # This will be useful for author's h-index computation
+            authors[name]['papers'].append(i+1)
 
             # ------- ENTITY: AFFILIATION -------
             if author["affiliation"]['university'] != "" or author["affiliation"]['role'] != "":
                 affiliation_key = author["affiliation"]['university'] + author["affiliation"]['role']
                 if not (affiliation_key in affiliations):
                     author["affiliation"]["index"] = index_affiliation
-                    affiliations[affiliation_key] = author["affiliation"]
+                    affiliation = author["affiliation"]
+                    affiliations[affiliation_key] = affiliation
                     # DATA WAREHOUSE 
-                    insert_authors_affiliation += f'({index_affiliation}, \'{author["affiliation"]["university"]}\', \'{author["affiliation"]["country"]}\', \'{author["affiliation"]["role"]}\'),\n'
-                    insert_authors += f', {index_affiliation}),\n'
+                    insert_authors_affiliation += f'(\'{affiliation["university"]}\', \'{affiliation["country"]}\', \'{affiliation["role"]}\'),\n'
+                    insert_authors_to_affiliation += f'UPDATE authors SET affiliation_id = (SELECT id FROM authors_affiliation WHERE university = \'{affiliation["university"]}\' AND country = \'{affiliation["country"]}\' AND role = \'{affiliation["role"]}\') WHERE id = {author["id"]};\n'
                     # GRAPH
-                    insert_authors_affiliation_graph += f'CREATE (af{index_affiliation}:Affiliation {{id: {index_affiliation}, name: "{author["affiliation"]["university"]}", country: "{author["affiliation"]["country"]}", role: "{author["affiliation"]["role"]}"}})\n'
+                    insert_authors_affiliation_graph += f'MERGE (af{index_affiliation}:Affiliation {{name: "{affiliation["university"]}", country: "{affiliation["country"]}", role: "{affiliation["role"]}"}})\n'
                     index_affiliation += 1
 
                 # ------- RELATIONSHIP: AUTHOR - AFFILIATION -------
-                # GRAPH
-                insert_authors_to_affiliation_graph += f'MATCH (a:Person), (af:Affiliation) WHERE a.id = {author["id"]} AND af.id = {index_affiliation} CREATE (a)-[:AFFILIATED_TO]->(af)\n'
+                insert_authors_to_affiliation_graph += f'MATCH (a:Author), (af:Affiliation) WHERE a.first_name = "{author["first_name"]}" AND a.last_name = "{author["last_name"]}" '
+                insert_authors_to_affiliation_graph += f'AND af.university = "{author["affiliation"]["university"]}" AND af.country = "{affiliation["country"]}" AND af.role = "{affiliation["role"]}" '
+                insert_authors_to_affiliation_graph += f'CREATE (a)-[:AFFILIATED_TO]->(af)\n'
             else:
-                insert_authors += f', 0),\n' # Assigning unknown affiliation to author
+                insert_authors_to_affiliation += f'UPDATE authors SET affiliation_id = 1 WHERE first_name = \'{mysql_escape_string(author["first_name"])}\' AND last_name = \'{mysql_escape_string(author["last_name"])}\';\n'
 
         # Loop over all the parsed authors from dataset
         for author in row["authors_parsed"]:
-            first_name = author[1].replace(",", "")
-            last_name = author[0].replace(",", "")
+            first_name = unidecode(author[1].replace(",", ""))
+            last_name = unidecode(author[0].replace(",", ""))
 
             if first_name.strip() != "":
                 names = normalize_name(first_name + " " + last_name)
-                first_name = names[0]
-                last_name = names[1]
-                name = names[2]
+                name = full_name(names)
+                first_name = unidecode(name[0])
+                last_name = unidecode(name[1])
+                name = name[2]
             
             has_google_scholar_profile = False
             for author in paper_authors:
-                if author == name or (author.split(" ")[0] == name.split(" ")[0] and author.split(" ")[-1] == name.split(" ")[-1]):
+                # Compare only first letters because authros_parsed has only first letter of the first name.
+                if author == name or (author.split(" ")[0][0] == name.split(" ")[0][0] and author.split(" ")[-1] == name.split(" ")[-1]):                    
                     has_google_scholar_profile = True
                     break
             if not has_google_scholar_profile: # Author doesn't have a profile in Google Scholar
                 # ------- ENTITY: AUTHOR -------
-                genderResult = genderDetector.get_gender(first_name.split(" ")[0])
-                gender = 'X'
-                if genderResult == 'female' or genderResult == 'male':
-                    gender = GENDER_MAPPING[genderResult]
+                gender = find_gender(first_name, last_name)
                 if not (name in authors):
                     authors[name] = {
                         "google_scholar_id": None,
@@ -525,13 +283,14 @@ def prepare_data(data_folder):
                         "first_name": first_name,
                         "last_name": last_name,
                         "full_name": name,
-                        "id": index_author
+                        "id": index_author,
+                        "papers": []
                     }
                     paper_authors.append(name)
                     # DATA WAREHOUSE
-                    insert_authors += f'({index_author}, \'{first_name}\', \'{last_name}\', \'{gender}\', 0),\n'
+                    insert_authors += f'(\'{mysql_escape_string(first_name)}\', \'{mysql_escape_string(last_name)}\', \'{gender}\', 1),\n'
                     # GRAPH
-                    insert_authors_graph += f'CREATE (a{index_author}:Author {{id: {index_author}, first_name: "{first_name}", last_name : "{last_name}", gender: "{gender}"}})\n'
+                    insert_authors_graph += f'MERGE (a{index_author}:Author {{first_name: "{first_name}", last_name : "{last_name}", gender: "{gender}"}})\n'
                     index_author += 1
 
             # ------- RELATIONSHIP: AUTHOR - PAPER -------
@@ -543,40 +302,34 @@ def prepare_data(data_folder):
                 elif author.split(" ")[0] == name.split(" ")[0] and author.split(" ")[-1] == name.split(" ")[-1]:
                     key = author
                     break
+                elif author.split(" ")[0][0] == name.split(" ")[0][0] and author.split(" ")[-1] == name.split(" ")[-1]:
+                    key = author
+                    break
+
             # DATA WAREHOUSE    
             insert_authors_to_papers += f'({authors[key]["id"]}, {i}),\n'
             # GRAPH
-            insert_authors_to_papers_graph += f'MATCH (a:Author), (p:Paper) WHERE a.id = {authors[key]["id"]} AND p.id = {i+1} CREATE (a)-[:AUTHOR]->(p)\n'
+            insert_authors_to_papers_graph += f'MATCH (a:Author), (p:Paper) WHERE a.first_name = "{authors[key]["first_name"]}" AND a.last_name = "{authors[key]["last_name"]}" '
+            insert_authors_to_papers_graph += f'AND p.arxiv_id = {row.id} CREATE (a)-[:AUTHOR]->(p)\n'
 
         # ------- RELATIONSHIP: AUTHOR - CO_AUTHOR -------
         for author in paper_authors:
             for coauthor in paper_authors:
                 if author != coauthor:
                     # GRAPH
-                    insert_coauthors_graph += f'MATCH (a1:Author), (a2:Author) WHERE a1.id = {authors[author]["id"]} and a2.id = {authors[coauthor]["id"]} CREATE (a1)-[:CO_AUTHOR]->(a2)\n'
+                    insert_coauthors_graph += f'MATCH (a1:Author), (a2:Author) WHERE a1.first_name = "{authors[author]["first_name"]}" AND a1.last_name = "{authors[author]["last_name"]}" '
+                    insert_coauthors_graph += f'AND a2.first_name = "{authors[coauthor]["first_name"]}" AND a2.last_name = "{authors[coauthor]["last_name"]}" '
+                    insert_coauthors_graph += f'CREATE (a1)-[:CO_AUTHOR]->(a2)\n'
 
         # ------- ENTITY: PUBLICATION VENUE -------
         publication_venue_key = ''
-        if row.doi:
+        if row.doi and row.doi != "NULL":
             doi = row.doi
-            if " " in doi:
-                doi = doi.split(" ")[0]
-        else:
-            doi_lookup = sch_doi(row.title)
-            if doi_lookup:
-                doi = doi_lookup
-            else:
-                doi = "NULL"
-        if doi != "NULL":
-            doi = doi.replace("\\", "")
-            papers.at[i, "doi"] = doi
-            print(f"DOI: {doi}")
             crossref_paper = query_crossref_API_works(doi)
             type = ""
             source = ""
             publisher = ""
             issn = ""
-            print("PAPER: " + row.title)
             if crossref_paper:
                 message = crossref_paper["message"]
                 publisher = message["publisher"]
@@ -596,14 +349,13 @@ def prepare_data(data_folder):
                         if "DOI" in reference:
                             reference_doi = reference["DOI"]
                             reference_doi = reference_doi.replace("\\", "")
-                            # check if reference_doi is in papers dataframe
-                            
                             if reference_doi in papers["doi"].values:
                                 # get paper id
                                 reference_id = papers[papers["doi"] == reference_doi].index[0] + 1
                                 # ------- RELATIONSHIP: PAPER - PAPER -------
                                 # GRAPH
-                                insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.id = {i+1} and p2.id = {reference_id} CREATE (p1)-[:CITES]->(p2)\n'
+                                insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.arxiv_id = "{row.id}" AND p2.arxiv_id = "{papers.at[reference_id, "id"]}"'
+                                insert_cites_graph += f'CREATE (p1)-[:CITES]->(p2)\n'
                                 papers.at[reference_id-1, "citedByCount"] += 1
                                 ref_found = True
                         if not ref_found:
@@ -613,10 +365,16 @@ def prepare_data(data_folder):
                                     if paper["title"] in reference_title:
                                         # Increase citedByCount of paper which title is in reference_title
                                         papers.at[j, "citedByCount"] += 1
+
                                         # ------- RELATIONSHIP: PAPER - PAPER -------
                                         # GRAPH
-                                        insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.id = {i+1} and p2.id = {j+1} CREATE (p1)-[:CITES]->(p2)\n'
+                                        insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.arxiv_id = "{row.id}" AND p2.arxiv_id = "{papers.at[reference_id, "id"]}"'
+                                        insert_cites_graph += f'CREATE (p1)-[:CITES]->(p2)\n'
                                         break
+
+                                # The next lines are for the case that the reference_title is not in the papers table but has already been ingested in the graph database
+                                insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.arxiv_id = "{row.id}" AND "{clear_title(reference_title)}" CONTAINS p2.title '
+                                insert_cites_graph += f'CREATE (p1)-[:CITES]->(p2)\n'
 
             # ------- ENTITY: PUBLICATION VENUE -------
             publication_venue_key = type + source + publisher
@@ -625,40 +383,47 @@ def prepare_data(data_folder):
                     "id": index_publication_venue,
                     "type": type,
                     "source": source,
-                    "publisher": publisher
+                    "publisher": publisher,
+                    "papers": []
                 }
                 index_publication_venue += 1
                 # DATA WAREHOUSE
-                insert_publication_venues += f'({index_publication_venue}, \'{type}\', \'{source}\', \'{publisher}\', \'{issn}\'),\n'
+                insert_publication_venues += f'(\'{type}\', \'{source}\', \'{publisher}\', '
+                if issn != "":
+                    insert_publication_venues += f'\'{issn}\'),\n'
+                else:
+                    insert_publication_venues += f'NULL),\n'
                 # GRAPH
-                insert_publication_venues_graph += f'CREATE (pv{index_publication_venue}:PublicationVenue {{id: {index_publication_venue}, type: "{type}", title: "{source}", publisher: "{publisher}"'
+                insert_publication_venues_graph += f'MERGE (pv{index_publication_venue}:PublicationVenue {{type: "{type}", title: "{source}", publisher: "{publisher}"'
                 if issn != "":
                     insert_publication_venues_graph += f', issn: "{issn}"}})\n'
                 else:
                     insert_publication_venues_graph += "})\n"
 
-            
             # ------- RELATIONSHIP: PAPER - PUBLICATION VENUE -------
+            # DATA WAREHOUSE
+            insert_papers_to_publication_venue += f'UPDATE papers SET publication_venue_id = (SELECT id FROM publication_venue WHERE type = \'{publication_venues[publication_venue_key]["type"]}\' AND title = \'{publication_venues[publication_venue_key]["source"]}\' AND publisher = \'{publication_venues[publication_venue_key]["publisher"]}\') WHERE arxiv_id = \'{row.id}\';\n'
             # GRAPH
-            insert_publication_venues_to_paper_graph += f'MATCH (pv:PublicationVenue), (p:Paper) WHERE pv.id = {publication_venues[publication_venue_key]["id"]} and p.id = {i+1} CREATE (pv)-[:PUBLISHED_IN]->(p)\n'
-            
+            insert_publication_venues_to_paper_graph += f'MATCH (pv:PublicationVenue), (p:Paper) WHERE pv.type = "{publication_venues[publication_venue_key]["type"]}" AND pv.title = "{publication_venues[publication_venue_key]["source"]}" AND pv.publisher = "{publication_venues[publication_venue_key]["publisher"]}" AND p.arxiv_id = "{row.id}" '
+            insert_publication_venues_to_paper_graph += f'CREATE (p)-[:PUBLISHED_IN]->(pv)\n'
+            publication_venues[publication_venue_key]["papers"].append(i+1)
+
         # ------- ENTITY: PAPER -------
         comments = clear_title(row.comments)
         report_no = row["report-no"] if row["report-no"] else 'NULL'
         license = row.license if row.license else "NULL"
         creation_year = datetime.strptime(row["versions"][0]['created'], '%a, %d %b %Y %H:%M:%S %Z').year
-        publication_venue_id = -1
-        if publication_venue_key in publication_venues:
-            publication_venue_id = publication_venues[publication_venue_key]["id"]
-        paper_id = i + 1 + index_paper
+
         # DATA WAREHOUSE
-        insert_papers += f'({paper_id}, {publication_venue_id}, {creation_year}, \'{row.title}\', \'{doi}\', \'{comments}\', \'{report_no}\', \'{license}\'),\n'
+        insert_papers += f'(\'{row.id}\', 1, {creation_year}, \'{row.title}\', \'{doi}\', \'{comments}\', \'{report_no}\', \'{license}\'),\n'
+        
+
         # GRAPH
-        insert_papers_graph += f'CREATE (p{paper_id}:Paper {{id: {paper_id}, year_id: "{creation_year}", title: "{row.title}", doi: "{doi}", comments: "{comments}", report_no: "{report_no}", license: "{license}"}})\n'
+        insert_papers_graph += f'MERGE (p{paper_id}:Paper {{arxiv_id: "{row.id}", year_id: "{creation_year}", title: "{row.title}", doi: "{doi}", comments: "{comments}", report_no: "{report_no}", license: "{license}"}})\n'
 
         # ------- RELATIONSHIP: PAPER - YEAR -------
         # GRAPH
-        insert_paper_to_year_graph += f'MATCH (p:Paper), (y:Year) WHERE p.id = {paper_id} and y.year = {creation_year} CREATE (p)-[:PUBLISHED_IN]->(y)\n'
+        insert_paper_to_year_graph += f'MATCH (p:Paper), (y:Year) WHERE p.arxiv_id = "{row.id}" AND y.year = {creation_year} CREATE (p)-[:PUBLISHED_IN]->(y)\n'
 
         # ------- RELATIONSHIP: PAPER - SCIENTIFIC DOMAIN -------
         scientific_domain_codes = row.categories.split(" ")
@@ -668,55 +433,54 @@ def prepare_data(data_folder):
                 # DATA WAREHOUSE
                 insert_scientific_domains_to_paper += f'{scientific_domain["id"], i},\n'
                 # GRAPH
-                insert_scientific_domain_to_paper_graph += f'MATCH (p:Paper), (s:ScientificDomain) WHERE p.id = {paper_id} and s.id = {scientific_domain["id"]} CREATE (p)-[:BELONGS_TO]->(s)\n'
+                insert_scientific_domain_to_paper_graph += f'MATCH (p:Paper), (s:ScientificDomain) WHERE p.arxiv_id = "{row.id}" AND s.code = "{scientific_domain_code}" CREATE (p)-[:BELONGS_TO]->(s)\n'
 
     for i, row in papers.iterrows():
-        insert_cites += f"UPDATE papers SET citedByCount = {papers.at[i, 'citedByCount']} WHERE id = {paper_id};\n" 
+        insert_cites += f"UPDATE papers SET citedByCount = {papers.at[i, 'citedByCount']} WHERE arxiv_id = {row.id};\n"
 
-    index_paper = index_paper + papers.shape[0]
+    insert_author_citations_count, insert_author_citations_count_graph = prepare_author_citations_count(authors, papers)
+    # insert_publication_venue_h_index, insert_publication_venue_h_index_graph = prepare_publication_venue_hindex(publication_venues, papers)
 
     # DATA WAREHOUSE
-    insert_authors = insert_authors[:-2] # Postgres
-    # insert_authors += '\n ON CONFLICT DO NOTHING;\n' # Postgres
-    insert_authors += ';\n' # MySQL
+    insert_authors = insert_authors[:-2]
+    insert_authors += ' ON DUPLICATE KEY UPDATE gender = VALUES(gender), citations_count = VALUES(citations_count), h_index = VALUES(h_index), author_affiliation_id = VALUES(author_affiliation_id);\n'
     with open(f'{data_folder}/dw/insert_authors.sql', 'w') as f:
         f.write(insert_authors)
+        f.write(insert_author_citations_count)
 
-    insert_papers = insert_papers[:-2] # Postgres
-    # insert_papers += '\n ON CONFLICT DO NOTHING;\n' # Postgres
-    insert_papers += ';\n' # MySQL
+    insert_papers = insert_papers[:-2]
+    insert_papers += ' ON DUPLICATE KEY UPDATE publication_venue_id = VALUES(publication_venue_id), year_id = VALUES(year_id), title = VALUES(title), doi = VALUES(doi), comments = VALUES(comments), report_no = VALUES(report_no), license = VALUES(license);\n'
     with open(f'{data_folder}/dw/insert_papers.sql', 'w') as f:
         f.write(insert_papers)
         f.write(insert_cites)
+        f.write(insert_papers_to_publication_venue)
         f.write(remove_null_strings_from_papers())
     
-    insert_authors_to_papers = insert_authors_to_papers[:-2] # Postgres
-    # insert_authors_to_papers += '\n ON CONFLICT DO NOTHING;\n' # Postgres
-    insert_authors_to_papers += ';\n' # MySQL 
+    insert_authors_to_papers = insert_authors_to_papers[:-2]
+    insert_authors_to_papers += ';\n'
     with open(f'{data_folder}/dw/insert_authors_to_papers.sql', 'w') as f:
         f.write(insert_authors_to_papers)
 
-    insert_scientific_domains_to_paper = insert_scientific_domains_to_paper[:-2] # Postgres
-    # insert_scientific_domains_to_paper += '\n ON CONFLICT DO NOTHING;\n' # Postgres
-    insert_scientific_domains_to_paper += ';\n' # MySQL
+    insert_scientific_domains_to_paper = insert_scientific_domains_to_paper[:-2]
+    insert_scientific_domains_to_paper += ';\n'
     with open(f'{data_folder}/dw/insert_scientific_domains_to_paper.sql', 'w') as f:
         f.write(insert_scientific_domains_to_paper)
 
-    insert_publication_venues = insert_publication_venues[:-2] # Postgres
-    # insert_publication_venues += '\n ON CONFLICT DO NOTHING;\n' # Postgres
-    insert_publication_venues += ';\n' # MySQL
+    insert_publication_venues = insert_publication_venues[:-2]
+    insert_publication_venues += ' ON DUPLICATE KEY UPDATE issn = VALUES(issn);\n'
     with open(f'{data_folder}/dw/insert_publication_venues.sql', 'w') as f:
         f.write(insert_publication_venues)
         
-    insert_authors_affiliation = insert_authors_affiliation[:-2] # Postgres
-    # insert_authors_affiliation += '\n ON CONFLICT DO NOTHING;\n' # Postgres
-    insert_authors_affiliation += ';\n' # MySQL
+    insert_authors_affiliation = insert_authors_affiliation[:-2]
+    insert_authors_affiliation += ';\n'
     with open(f'{data_folder}/dw/insert_authors_affiliation.sql', 'w') as f:
         f.write(insert_authors_affiliation)
+        f.write(insert_authors_to_affiliation)
 
     # GRAPH
     with open(f'{data_folder}/graph/insert_authors_graph.sql', 'w') as f:
         f.write(insert_authors_graph)
+        f.write(insert_author_citations_count_graph)
 
     with open(f'{data_folder}/graph/insert_coauthors_graph.sql', 'w') as f:
         f.write(insert_coauthors_graph)
@@ -752,20 +516,9 @@ def prepare_data(data_folder):
     prepare_scientific_domains(data_folder)
     prepare_year(data_folder)
 
-    # write ids in the file
-    with open(f'{data_folder}/ids.json', 'w') as f:
-        ids = {
-            "author": index_author,
-            "paper": index_paper,
-            "affiliation": index_affiliation,
-            "publication_venue": index_publication_venue,
-        }
-        json.dump(ids, f)
-
-
 with DAG(
     dag_id='project',  # name of dag
-    schedule_interval='*/10 * * * *',  
+    schedule_interval='0 6 * * *',  # Run this DAG every day at 6:00 AM
     start_date=airflow.utils.dates.days_ago(1),
     catchup=False,  # in case execution has been paused, should it execute everything in between
     # the PostgresOperator will look for files in this folder
@@ -785,87 +538,6 @@ with DAG(
 
     # DATA WAREHOUSE
     with TaskGroup("dw_insert_data", tooltip="insert data in the data warehouse") as dw_insert_data:
-        # dw_create_tables = PostgresOperator(
-        #     task_id='dw_create_tables',
-        #     dag=project,
-        #     postgres_conn_id='airflow_pg',
-        #     sql='./dw/schema.sql',
-        #     trigger_rule='none_failed',
-        #     autocommit=True,
-        # )
-
-        # dw_insert_authors = PostgresOperator(
-        #     task_id='dw_insert_authors',
-        #     dag=project,
-        #     postgres_conn_id='airflow_pg',
-        #     sql='./dw/insert_authors.sql',
-        #     trigger_rule='none_failed',
-        #     autocommit=True,
-        # )
-
-        # dw_insert_scientific_domain = PostgresOperator(
-        #     task_id='dw_insert_scientific_domain',
-        #     dag=project,
-        #     postgres_conn_id='airflow_pg',
-        #     sql='./dw/insert_scientific_domain.sql',
-        #     trigger_rule='none_failed',
-        #     autocommit=True,
-        # )
-
-        # dw_insert_papers = PostgresOperator(
-        #     task_id='dw_insert_papers',
-        #     dag=project,
-        #     postgres_conn_id='airflow_pg',
-        #     sql='./dw/insert_papers.sql',
-        #     trigger_rule='none_failed',
-        #     autocommit=True,
-        # )
-
-        # dw_insert_authors_to_papers = PostgresOperator(
-        #     task_id='dw_insert_authors_to_papers',
-        #     dag=project,
-        #     postgres_conn_id='airflow_pg',
-        #     sql='./dw/insert_authors_to_papers.sql',
-        #     trigger_rule='none_failed',
-        #     autocommit=True,
-        # )
-
-        # dw_insert_publication_venues = PostgresOperator(
-        #     task_id='dw_insert_publication_venues',
-        #     dag=project,
-        #     postgres_conn_id='airflow_pg',
-        #     sql='./dw/insert_publication_venues.sql',
-        #     trigger_rule='none_failed',
-        #     autocommit=True,
-        # )
-
-        # dw_insert_year = PostgresOperator(
-        #     task_id='dw_insert_year',
-        #     dag=project,
-        #     postgres_conn_id='airflow_pg',
-        #     sql='./dw/insert_year.sql',
-        #     trigger_rule='none_failed',
-        #     autocommit=True,
-        # )
-
-        # dw_insert_authors_affiliation = PostgresOperator(
-        #     task_id='dw_insert_authors_affiliation',
-        #     dag=project,
-        #     postgres_conn_id='airflow_pg',
-        #     sql='./dw/insert_authors_affiliation.sql',
-        #     trigger_rule='none_failed',
-        #     autocommit=True,
-        # )
-
-        # dw_insert_scientific_domain_to_paper = PostgresOperator(
-        #     task_id='dw_insert_scientific_domain_to_paper',
-        #     dag=project,
-        #     postgres_conn_id='airflow_pg',
-        #     sql='./dw/insert_scientific_domain_to_paper.sql',
-        #     trigger_rule='none_failed',
-        #     autocommit=True,
-        # )
-
         dw_create_tables = MySqlOperator(
             task_id='dw_create_tables',
             dag=project,
@@ -879,7 +551,7 @@ with DAG(
             task_id='dw_insert_authors',
             dag=project,
             mysql_conn_id='mysql_connection',
-            sql='./dw/insert_authors.sql',
+            sql="./dw/insert_authors.sql",
             trigger_rule='none_failed',
             autocommit=True,
         )
@@ -888,7 +560,7 @@ with DAG(
             task_id='dw_insert_scientific_domain',
             dag=project,
             mysql_conn_id='mysql_connection',
-            sql='./dw/insert_scientific_domain.sql',
+            sql="./dw/insert_scientific_domain.sql",
             trigger_rule='none_failed',
             autocommit=True,
         )
@@ -897,7 +569,7 @@ with DAG(
             task_id='dw_insert_papers',
             dag=project,
             mysql_conn_id='mysql_connection',
-            sql='./dw/insert_papers.sql',
+            sql="./dw/insert_papers.sql",
             trigger_rule='none_failed',
             autocommit=True,
         )
@@ -906,7 +578,7 @@ with DAG(
             task_id='dw_insert_authors_to_papers',
             dag=project,
             mysql_conn_id='mysql_connection',
-            sql='./dw/insert_authors_to_papers.sql',
+            sql="./dw/insert_authors_to_papers.sql",
             trigger_rule='none_failed',
             autocommit=True,
         )
@@ -915,7 +587,7 @@ with DAG(
             task_id='dw_insert_publication_venues',
             dag=project,
             mysql_conn_id='mysql_connection',
-            sql='./dw/insert_publication_venues.sql',
+            sql="./dw/insert_publication_venues.sql",
             trigger_rule='none_failed',
             autocommit=True,
         )
@@ -924,7 +596,7 @@ with DAG(
             task_id='dw_insert_year',
             dag=project,
             mysql_conn_id='mysql_connection',
-            sql='./dw/insert_year.sql',
+            sql="./dw/insert_year.sql",
             trigger_rule='none_failed',
             autocommit=True,
         )
@@ -933,7 +605,7 @@ with DAG(
             task_id='dw_insert_authors_affiliation',
             dag=project,
             mysql_conn_id='mysql_connection',
-            sql='./dw/insert_authors_affiliation.sql',
+            sql="./dw/insert_authors_affiliation.sql",
             trigger_rule='none_failed',
             autocommit=True,
         )
@@ -942,31 +614,19 @@ with DAG(
             task_id='dw_insert_scientific_domain_to_paper',
             dag=project,
             mysql_conn_id='mysql_connection',
-            sql='./dw/insert_scientific_domains_to_paper.sql',
+            sql="./dw/insert_scientific_domains_to_paper.sql",
             trigger_rule='none_failed',
             autocommit=True,
         )
 
-        dw_create_tables >> dw_insert_authors >> dw_insert_scientific_domain >> dw_insert_papers >> dw_insert_authors_to_papers >> dw_insert_publication_venues >> dw_insert_year >> dw_insert_authors_affiliation >> dw_insert_scientific_domain_to_paper
-
-
-    global cypher_script
-    def read_statement(ti, data_folder, file_name):
-        with open(f'{data_folder}/graph/{file_name}', 'r') as f:
-            cypher_script = f.read()
-            print(cypher_script)
-            ti.xcom_push(key='cypher_script', value=cypher_script)
+        dw_create_tables >> dw_insert_authors_affiliation >> dw_insert_authors
+        dw_create_tables >> dw_insert_scientific_domain
+        dw_create_tables >> [dw_insert_publication_venues, dw_insert_year] >> dw_insert_papers 
+        [dw_insert_authors, dw_insert_papers] >> dw_insert_authors_to_papers
+        [dw_insert_scientific_domain, dw_insert_papers] >> dw_insert_scientific_domain_to_paper
 
     # GRAPH DATABASE CONSTRAINTS
     with TaskGroup("graph_insert_data", tooltip="insert data in the graph database") as graph_insert_data:
-        graph_create_constraints = Neo4jExtendedOperator(
-            task_id='graph_create_constraints',
-            neo4j_conn_id='neo4j_connection',
-            sql=f'{DATA_FOLDER}/graph/constraints.sql',
-            is_sql_file=True,
-            dag=project,
-        )
-
         # insert the authors in the graph database
         graph_insert_authors = Neo4jExtendedOperator(
             task_id='graph_insert_authors',
@@ -1110,20 +770,13 @@ with DAG(
             retry_delay=timedelta(seconds=10),
         )
 
-        graph_create_constraints >> graph_insert_authors 
-        graph_create_constraints >> graph_insert_papers 
-        graph_create_constraints >> graph_insert_scientific_domain
         graph_insert_scientific_domain >> graph_insert_scientific_domain_to_paper
-        graph_create_constraints >> graph_insert_years
-        graph_create_constraints >> graph_insert_authors_affiliation 
-        graph_create_constraints >> graph_insert_publication_venues 
         [graph_insert_papers, graph_insert_years] >> graph_insert_paper_to_year
         [graph_insert_publication_venues, graph_insert_papers] >> graph_insert_publication_venues_to_paper
         [graph_insert_authors, graph_insert_papers] >> graph_insert_authors_to_papers
         [graph_insert_authors, graph_insert_authors_affiliation] >> graph_insert_authors_to_affiliation 
         graph_insert_authors >> graph_insert_coauthors
         graph_insert_papers >> graph_insert_cites
-
 
 prepare_data_for_insert >> dw_insert_data
 prepare_data_for_insert >> graph_insert_data

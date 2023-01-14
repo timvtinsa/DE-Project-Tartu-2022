@@ -58,7 +58,7 @@ x-airflow-common:
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:- semanticscholar gender_guesser apache-airflow-providers-neo4j}
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:- semanticscholar gender_guesser apache-airflow-providers-neo4j requests==2.28.1 scholarly fake_useragent==1.1.1 beautifulsoup4 free-proxy httpx requests[socks] selenium stem arrow bibtexparser unidecode}
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -290,15 +290,15 @@ services:
     volumes:
       - ./neo4j/data:/data
       - ./neo4j/conf:/conf
-  notebook:
-    container_name: notebook
-    build: notebook/
-    ports:
-      - 8888:8888
-    volumes:
-       - ./:/home/jovyan/work/data
-    environment:
-      - GRANT_SUDO=yes
+  # notebook:
+  #   container_name: notebook
+  #   build: notebook/
+  #   ports:
+  #     - 8888:8888
+  #   volumes:
+  #      - ./:/home/jovyan/work/data
+  #   environment:
+  #     - GRANT_SUDO=yes
 
   mysql:
     container_name: mysql
