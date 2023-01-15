@@ -22,7 +22,7 @@ id INT AUTO_INCREMENT PRIMARY KEY,
 type VARCHAR(200) NOT NULL,
 publisher VARCHAR(200) NOT NULL,
 title VARCHAR(200) NOT NULL,
-issn VARCHAR(100) NOT NULL,
+issn VARCHAR(100),
 h_index INT NULL,
 UNIQUE KEY publication_venue_key (type, publisher, title)
 );

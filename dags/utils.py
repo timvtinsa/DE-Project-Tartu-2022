@@ -33,9 +33,10 @@ def clear_title(title):
     return title if title else 'NULL'
 
 def mysql_escape_string(s):
-    if s is not None:
-        s = s.replace("'", "''") 
-    return s if s else 'NULL'
+    return s.replace("'", "''")
+
+def cypher_escape_string(s):
+    return s.replace("\"", "")
 
 def normalize_title(title):
     return " ".join(title.strip().title().split()).replace(".", "")

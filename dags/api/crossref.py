@@ -16,6 +16,13 @@ def query_crossref_API_bibtex(doi):
     print("[CROSSREF] Querying bibtex: " + doi)
     url = CROSSREF_API_BASE_URL+ "/works/" + doi + "/transform/application/x-bibtex"
     bibtex = get_text(url)
+    type = ""
+    source_title = ""
     for line in bibtex.splitlines():
         if line.startswith("@"):
-            return line.split("{")[0].replace("@", "")
+            type = line.split("{")[0].replace("@", "")
+        if type == "article" and "journal" in line:
+            source_title = line.split("{")[1].replace("}", "")
+        if type != "" and type != "article" and "booktitle" in line:
+            source_title = line.split("=")[1].replace("{", "").replace("}", "").replace("\\textendash", "-")
+    return type, source_title

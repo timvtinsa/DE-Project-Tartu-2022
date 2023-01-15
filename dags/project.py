@@ -118,21 +118,24 @@ def clean_data(papers):
                 break
 
         # This statement is useful here if the doi is null in the dataset
+        doi = ""
         if row.doi:
             doi = row.doi
             if " " in doi:
                 doi = doi.split(" ")[0]
-            elif doi == "null":
-                print("[RESOLVING DOI]")
-                doi_lookup = sch_doi(row.title)
-                if doi_lookup:
-                    print("[RESOLVED DOI] " + doi_lookup)
-                    doi = doi_lookup
-                else:
-                    doi = "NULL"
+        else:
+            print("[RESOLVING DOI]")
+            doi_lookup = sch_doi(row.title)
+            if doi_lookup:
+                print("[RESOLVED DOI] " + doi_lookup)
+                doi = doi_lookup
+            else:
+                print("[RESOLVED DOI] NOT FOUND")
+                doi = "NULL"
+            
         if doi != "NULL":
             doi = doi.replace("\\", "")
-            papers.at[i, "doi"] = doi   
+        papers.at[i, "doi"] = doi
 
     # Add an empty column for the number of citations
     papers['citedByCount'] = 0
@@ -178,7 +181,7 @@ def prepare_data(data_folder):
     publication_venues = {}
 
     # DATA WAREHOUSE
-    insert_authors = 'INSERT INTO authors (first_name, last_name, gender, author_affiliation_id)\n VALUES \n'
+    insert_authors = 'INSERT INTO authors (first_name, last_name, gender, citations_count, author_affiliation_id)\n VALUES \n'
     insert_papers = 'INSERT INTO papers (arxiv_id, publication_venue_id, year_id, title, doi, comments, report_no, license)\n VALUES \n'
     insert_authors_to_papers = 'INSERT INTO author_to_paper (author_id, paper_id)\n VALUES \n'
     insert_scientific_domains_to_paper = 'INSERT IGNORE INTO scientific_domain_to_paper (scientific_domain_id, paper_id)\n VALUES \n'
@@ -221,9 +224,9 @@ def prepare_data(data_folder):
                 author['id'] = index_author
                 authors[name] = author
                 # DATA WAREHOUSE
-                insert_authors += f'(\'{mysql_escape_string(author["first_name"])}\', \'{mysql_escape_string(author["last_name"])}\', \'{author["gender"]}\', 1),\n'
+                insert_authors += f'(\'{mysql_escape_string(author["first_name"])}\', \'{mysql_escape_string(author["last_name"])}\', \'{author["gender"]}\', 0, 1),\n'
                 # GRAPH
-                insert_authors_graph += f'MERGE (a{index_author}:Author {{first_name: "{author["first_name"]}", last_name : "{author["last_name"]}", gender: "{author["gender"]}"}})\n'
+                insert_authors_graph += f'MERGE (a{index_author}:Author {{first_name: "{author["first_name"]}", last_name : "{author["last_name"]}", gender: "{author["gender"]}"}}, citations_count: 0)\n'
                 index_author += 1
 
             # This will be useful for author's h-index computation
@@ -246,7 +249,7 @@ def prepare_data(data_folder):
                 # ------- RELATIONSHIP: AUTHOR - AFFILIATION -------
                 insert_authors_to_affiliation_graph += f'MATCH (a:Author), (af:Affiliation) WHERE a.first_name = "{author["first_name"]}" AND a.last_name = "{author["last_name"]}" '
                 insert_authors_to_affiliation_graph += f'AND af.university = "{author["affiliation"]["university"]}" AND af.country = "{affiliation["country"]}" AND af.role = "{affiliation["role"]}" '
-                insert_authors_to_affiliation_graph += f'CREATE (a)-[:AFFILIATED_TO]->(af)\n'
+                insert_authors_to_affiliation_graph += f'MERGE (a)-[:AFFILIATED_TO]->(af)\n'
             else:
                 insert_authors_to_affiliation += f'UPDATE authors SET affiliation_id = 1 WHERE first_name = \'{mysql_escape_string(author["first_name"])}\' AND last_name = \'{mysql_escape_string(author["last_name"])}\';\n'
 
@@ -288,7 +291,7 @@ def prepare_data(data_folder):
                     }
                     paper_authors.append(name)
                     # DATA WAREHOUSE
-                    insert_authors += f'(\'{mysql_escape_string(first_name)}\', \'{mysql_escape_string(last_name)}\', \'{gender}\', 1),\n'
+                    insert_authors += f'(\'{mysql_escape_string(first_name)}\', \'{mysql_escape_string(last_name)}\', \'{gender}\', 0, 1),\n'
                     # GRAPH
                     insert_authors_graph += f'MERGE (a{index_author}:Author {{first_name: "{first_name}", last_name : "{last_name}", gender: "{gender}"}})\n'
                     index_author += 1
@@ -307,10 +310,10 @@ def prepare_data(data_folder):
                     break
 
             # DATA WAREHOUSE    
-            insert_authors_to_papers += f'({authors[key]["id"]}, {i}),\n'
+            insert_authors_to_papers += f'({authors[key]["id"]}, (SELECT id FROM papers WHERE arxiv_id = \'{row.id}\')),\n'
             # GRAPH
             insert_authors_to_papers_graph += f'MATCH (a:Author), (p:Paper) WHERE a.first_name = "{authors[key]["first_name"]}" AND a.last_name = "{authors[key]["last_name"]}" '
-            insert_authors_to_papers_graph += f'AND p.arxiv_id = {row.id} CREATE (a)-[:AUTHOR]->(p)\n'
+            insert_authors_to_papers_graph += f'AND p.arxiv_id = "{row.id}" MERGE (a)-[:AUTHOR]->(p)\n'
 
         # ------- RELATIONSHIP: AUTHOR - CO_AUTHOR -------
         for author in paper_authors:
@@ -319,7 +322,7 @@ def prepare_data(data_folder):
                     # GRAPH
                     insert_coauthors_graph += f'MATCH (a1:Author), (a2:Author) WHERE a1.first_name = "{authors[author]["first_name"]}" AND a1.last_name = "{authors[author]["last_name"]}" '
                     insert_coauthors_graph += f'AND a2.first_name = "{authors[coauthor]["first_name"]}" AND a2.last_name = "{authors[coauthor]["last_name"]}" '
-                    insert_coauthors_graph += f'CREATE (a1)-[:CO_AUTHOR]->(a2)\n'
+                    insert_coauthors_graph += f'MERGE (a1)-[:CO_AUTHOR]->(a2)\n'
 
         # ------- ENTITY: PUBLICATION VENUE -------
         publication_venue_key = ''
@@ -340,7 +343,9 @@ def prepare_data(data_folder):
                         source = crossref_journal["message"]["title"]
                 elif "event" in message:
                     source = message["event"]["name"]
-                type = query_crossref_API_bibtex(doi)
+                type, source_title = query_crossref_API_bibtex(doi)
+                if source_title and source == "":
+                    source = source_title
 
                 if "reference" in message:
                     references = message["reference"]
@@ -349,36 +354,49 @@ def prepare_data(data_folder):
                         if "DOI" in reference:
                             reference_doi = reference["DOI"]
                             reference_doi = reference_doi.replace("\\", "")
-                            if reference_doi in papers["doi"].values:
-                                # get paper id
-                                reference_id = papers[papers["doi"] == reference_doi].index[0] + 1
-                                # ------- RELATIONSHIP: PAPER - PAPER -------
-                                # GRAPH
-                                insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.arxiv_id = "{row.id}" AND p2.arxiv_id = "{papers.at[reference_id, "id"]}"'
-                                insert_cites_graph += f'CREATE (p1)-[:CITES]->(p2)\n'
-                                papers.at[reference_id-1, "citedByCount"] += 1
-                                ref_found = True
+                            if reference_doi != row.doi:
+                                if reference_doi in papers["doi"].values:
+                                    reference_id = papers[papers["doi"] == reference_doi].index[0] + 1
+                                    # ------- RELATIONSHIP: PAPER - PAPER -------
+                                    # DATA WAREHOUSE
+                                    insert_cites += f'UPDATE authors SET citations_count = citations_count + 1 WHERE id IN (SELECT author_id FROM author_to_paper WHERE paper_id = (SELECT id FROM papers WHERE doi = "{reference_doi}"));\n'
+                                    # GRAPH
+                                    insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.arxiv_id = "{row.id}" AND p2.arxiv_id = "{papers.at[reference_id-1, "id"]}"'
+                                    insert_cites_graph += f' MERGE (p1)-[:CITES]->(p2)\n'
+                                    papers.at[reference_id-1, "citedByCount"] += 1
+                                    ref_found = True
+                                else:
+                                    # DATA WAREHOUSE
+                                    insert_cites += f'UPDATE papers SET citedByCount = citedByCount + 1 WHERE doi = "{reference_doi}";\n'
+                                    insert_cites += f'UPDATE authors SET citations_count = citations_count + 1 WHERE id IN (SELECT author_id FROM author_to_paper WHERE paper_id = (SELECT id FROM papers WHERE doi = "{reference_doi}"));\n'
+
+                                    # GRAPH
+                                    insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.arxiv_id = "{row.id}" AND p2.doi = "{reference_doi}" '
+                                    insert_cites_graph += f'MERGE (p1)-[:CITES]->(p2) ON CREATE SET p2.citedByCount = p2.citedByCount + 1\n'
                         if not ref_found:
                             if "unstructured" in reference:
                                 reference_title = reference["unstructured"]
-                                for j, paper in papers.iterrows():
-                                    if paper["title"] in reference_title:
-                                        # Increase citedByCount of paper which title is in reference_title
-                                        papers.at[j, "citedByCount"] += 1
+                                if reference_title != row.title:
+                                    for j, paper in papers.iterrows():
+                                        if paper["title"] in reference_title:
+                                            # get paper id
+                                            reference_id = papers[papers["title"] == paper["title"]].index[0] + 1
+                                            # Increase citedByCount of paper which title is in reference_title
+                                            papers.at[j, "citedByCount"] += 1
 
-                                        # ------- RELATIONSHIP: PAPER - PAPER -------
-                                        # GRAPH
-                                        insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.arxiv_id = "{row.id}" AND p2.arxiv_id = "{papers.at[reference_id, "id"]}"'
-                                        insert_cites_graph += f'CREATE (p1)-[:CITES]->(p2)\n'
-                                        break
+                                            # ------- RELATIONSHIP: PAPER - PAPER -------
+                                            # GRAPH
+                                            insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.arxiv_id = "{row.id}" AND p2.arxiv_id = "{papers.at[reference_id-1, "id"]}"'
+                                            insert_cites_graph += f' MERGE (p1)-[:CITES]->(p2)\n'
+                                            break
 
-                                # The next lines are for the case that the reference_title is not in the papers table but has already been ingested in the graph database
-                                insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.arxiv_id = "{row.id}" AND "{clear_title(reference_title)}" CONTAINS p2.title '
-                                insert_cites_graph += f'CREATE (p1)-[:CITES]->(p2)\n'
+                                    # The next lines are for the case that the reference_title is not in the papers table but has already been ingested in the graph database
+                                    insert_cites_graph += f'MATCH (p1:Paper), (p2:Paper) WHERE p1.arxiv_id = "{row.id}" AND "{clear_title(reference_title)}" CONTAINS p2.title '
+                                    insert_cites_graph += f'MERGE (p1)-[:CITES]->(p2)\n'
 
             # ------- ENTITY: PUBLICATION VENUE -------
             publication_venue_key = type + source + publisher
-            if not (publication_venue_key in publication_venues):
+            if not (publication_venue_key in publication_venues) and publication_venue_key != "":
                 publication_venues[publication_venue_key] = {
                     "id": index_publication_venue,
                     "type": type,
@@ -388,25 +406,28 @@ def prepare_data(data_folder):
                 }
                 index_publication_venue += 1
                 # DATA WAREHOUSE
-                insert_publication_venues += f'(\'{type}\', \'{source}\', \'{publisher}\', '
+                insert_publication_venues += f'(\'{type}\', \'{mysql_escape_string(publisher)}\', \'{mysql_escape_string(source)}\', '
                 if issn != "":
                     insert_publication_venues += f'\'{issn}\'),\n'
                 else:
                     insert_publication_venues += f'NULL),\n'
                 # GRAPH
-                insert_publication_venues_graph += f'MERGE (pv{index_publication_venue}:PublicationVenue {{type: "{type}", title: "{source}", publisher: "{publisher}"'
+                insert_publication_venues_graph += f'MERGE (pv{index_publication_venue}:PublicationVenue {{type: "{type}", title: "{cypher_escape_string(source)}", publisher: "{cypher_escape_string(publisher)}"'
                 if issn != "":
                     insert_publication_venues_graph += f', issn: "{issn}"}})\n'
                 else:
                     insert_publication_venues_graph += "})\n"
 
-            # ------- RELATIONSHIP: PAPER - PUBLICATION VENUE -------
-            # DATA WAREHOUSE
-            insert_papers_to_publication_venue += f'UPDATE papers SET publication_venue_id = (SELECT id FROM publication_venue WHERE type = \'{publication_venues[publication_venue_key]["type"]}\' AND title = \'{publication_venues[publication_venue_key]["source"]}\' AND publisher = \'{publication_venues[publication_venue_key]["publisher"]}\') WHERE arxiv_id = \'{row.id}\';\n'
-            # GRAPH
-            insert_publication_venues_to_paper_graph += f'MATCH (pv:PublicationVenue), (p:Paper) WHERE pv.type = "{publication_venues[publication_venue_key]["type"]}" AND pv.title = "{publication_venues[publication_venue_key]["source"]}" AND pv.publisher = "{publication_venues[publication_venue_key]["publisher"]}" AND p.arxiv_id = "{row.id}" '
-            insert_publication_venues_to_paper_graph += f'CREATE (p)-[:PUBLISHED_IN]->(pv)\n'
-            publication_venues[publication_venue_key]["papers"].append(i+1)
+            if publication_venue_key != "":
+                # ------- RELATIONSHIP: PAPER - PUBLICATION VENUE -------
+                # DATA WAREHOUSE
+                insert_papers_to_publication_venue += f'UPDATE papers SET publication_venue_id = (SELECT id FROM publication_venue WHERE type = \'{publication_venues[publication_venue_key]["type"]}\' AND title = \'{mysql_escape_string(publication_venues[publication_venue_key]["source"])}\' AND publisher = \'{mysql_escape_string(publication_venues[publication_venue_key]["publisher"])}\') WHERE arxiv_id = \'{row.id}\';\n'
+                # GRAPH
+                insert_publication_venues_to_paper_graph += f'MATCH (pv:PublicationVenue), (p:Paper) WHERE pv.type = "{publication_venues[publication_venue_key]["type"]}" AND pv.title = "{cypher_escape_string(publication_venues[publication_venue_key]["source"])}" AND pv.publisher = "{cypher_escape_string(publication_venues[publication_venue_key]["publisher"])}" AND p.arxiv_id = "{row.id}" '
+                insert_publication_venues_to_paper_graph += f'MERGE (p)-[:PUBLISHED_IN]->(pv)\n'
+                publication_venues[publication_venue_key]["papers"].append(i+1)
+        else:
+            doi = "NULL"
 
         # ------- ENTITY: PAPER -------
         comments = clear_title(row.comments)
@@ -416,14 +437,12 @@ def prepare_data(data_folder):
 
         # DATA WAREHOUSE
         insert_papers += f'(\'{row.id}\', 1, {creation_year}, \'{row.title}\', \'{doi}\', \'{comments}\', \'{report_no}\', \'{license}\'),\n'
-        
-
         # GRAPH
-        insert_papers_graph += f'MERGE (p{paper_id}:Paper {{arxiv_id: "{row.id}", year_id: "{creation_year}", title: "{row.title}", doi: "{doi}", comments: "{comments}", report_no: "{report_no}", license: "{license}"}})\n'
+        insert_papers_graph += f'MERGE (p{paper_id}:Paper {{arxiv_id: "{row.id}", year_id: "{creation_year}", title: "{row.title}", doi: "{doi}", comments: "{clear_title(comments)}", report_no: "{clear_title(report_no)}", license: "{license}"}})\n'
 
         # ------- RELATIONSHIP: PAPER - YEAR -------
         # GRAPH
-        insert_paper_to_year_graph += f'MATCH (p:Paper), (y:Year) WHERE p.arxiv_id = "{row.id}" AND y.year = {creation_year} CREATE (p)-[:PUBLISHED_IN]->(y)\n'
+        insert_paper_to_year_graph += f'MATCH (p:Paper), (y:Year) WHERE p.arxiv_id = "{row.id}" AND y.year = {creation_year} MERGE (p)-[:PUBLISHED_IN]->(y)\n'
 
         # ------- RELATIONSHIP: PAPER - SCIENTIFIC DOMAIN -------
         scientific_domain_codes = row.categories.split(" ")
@@ -431,9 +450,9 @@ def prepare_data(data_folder):
             scientific_domain = lookup_scientific_domain(data_folder, scientific_domain_code)
             if scientific_domain:
                 # DATA WAREHOUSE
-                insert_scientific_domains_to_paper += f'{scientific_domain["id"], i},\n'
+                insert_scientific_domains_to_paper += f'(\'{scientific_domain["id"]}\', (SELECT id FROM papers WHERE arxiv_id = \'{row.id}\')),\n'
                 # GRAPH
-                insert_scientific_domain_to_paper_graph += f'MATCH (p:Paper), (s:ScientificDomain) WHERE p.arxiv_id = "{row.id}" AND s.code = "{scientific_domain_code}" CREATE (p)-[:BELONGS_TO]->(s)\n'
+                insert_scientific_domain_to_paper_graph += f'MATCH (p:Paper), (s:ScientificDomain) WHERE p.arxiv_id = "{row.id}" AND s.code = "{scientific_domain_code}" MERGE (p)-[:BELONGS_TO]->(s)\n'
 
     for i, row in papers.iterrows():
         insert_cites += f"UPDATE papers SET citedByCount = {papers.at[i, 'citedByCount']} WHERE arxiv_id = {row.id};\n"
